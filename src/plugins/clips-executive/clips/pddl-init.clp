@@ -55,7 +55,7 @@
   =>
   (printout t "Registering robot memory trigger for new plans" crlf)
   (bind ?query (bson-create))
-  (bson-append ?query "plan" 1)
+;  (bson-append ?query "plan" "{ $exists: true }")
   (bind ?trigger (robmem-trigger-register "robmem.pddl-plan" ?query "new-plan"))
   (bson-destroy ?query)
   (assert (registered-trigger "robmem.pddl-plan" ?trigger))
@@ -69,5 +69,9 @@
   (retract ?pg)
   (retract ?pp)
   (path-load "pddl.clp")
+  (path-load "diagnosis.clp")
   (assert (ff-feature-loaded pddl_planner))
+
 )
+
+

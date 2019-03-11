@@ -7,12 +7,12 @@
 ;---------------------------------------------------------------------------
 
 (deftemplate pddl-plan
-  ; The ID of the goal.
-  (slot goal-id (type SYMBOL))
+  ; The ID of the goal or diagnose.
+  (slot purpose-id (type SYMBOL))
   ; The ID of PDDL generation message.
   (slot gen-id (type INTEGER))
   ; The ID of the PDDL Plan message.
-  (slot plan-id (type INTEGER))
+  (slot planner-id (type INTEGER))
   ; The current status of this plan.
   (slot status (type SYMBOL)
     (allowed-values
@@ -26,15 +26,29 @@
 (deffunction pddl-call (?goal-id ?goal)
   "Call the PDDL planner for the given goal-id with the goal given as string."
   (bind ?m
-    (blackboard-create-msg "PddlGenInterface::pddl-gen" "GenerateMessage")
+     (blackboard-create-msg "PddlGenInterface::pddl-gen" "GenerateMessage")
   )
   (blackboard-set-msg-field ?m "goal" ?goal)
   (printout info "Calling PDDL planner for goal '" ?goal "'" crlf)
   (bind ?gen-id (blackboard-send-msg ?m))
   (assert (pddl-plan
-    (goal-id ?goal-id) (goal ?goal) (status GEN-PENDING) (gen-id ?gen-id))
+    (purpose-id ?goal-id) (goal ?goal) (status GEN-PENDING) (gen-id ?gen-id))
   )
 )
+
+(deffunction pddl-diagnosis-call (?diag-id ?fault)
+   "Call the PDDL planner for the given diagnose-id with the goal given as string."
+  (bind ?m
+     (blackboard-create-msg "PddlPlannerInterface::pddl-planner" "PlanMessage")
+  )
+  (blackboard-set-msg-field ?m "goal" ?fault)
+  (printout info "Calling PDDL planner for fault '" ?fault "'" crlf)
+  (bind ?planner-id (blackboard-send-msg ?m))
+  (assert (pddl-plan
+    (purpose-id ?diag-id) (goal ?fault) (status PENDING) (planner-id ?planner-id)
+  ))
+)
+
 
 (defrule pddl-check-if-generation-running
   "Check whether the PDDL generator started."
@@ -62,22 +76,22 @@
   (bind ?m
     (blackboard-create-msg "PddlPlannerInterface::pddl-planner" "PlanMessage")
   )
-  (bind ?plan-id (blackboard-send-msg ?m))
-  (modify ?p (plan-id ?plan-id) (status PENDING))
+  (bind ?planner-id (blackboard-send-msg ?m))
+  (modify ?p (planner-id ?planner-id) (status PENDING))
 )
 
 (defrule pddl-check-if-planner-running
   "Check whether the planner started to plan."
-  ?p <- (pddl-plan (status PENDING) (plan-id ?plan-id))
-  (PddlPlannerInterface (id "pddl-planner") (msg_id ?plan-id))
+  ?p <- (pddl-plan (status PENDING) (planner-id ?planner-id))
+  (PddlPlannerInterface (id "pddl-planner") (msg_id ?planner-id))
   =>
   (modify ?p (status RUNNING))
 )
 
 (defrule pddl-check-if-planner-finished
   "Check whether the planner finished planning."
-  ?p <- (pddl-plan (status RUNNING) (plan-id ?plan-id))
-  (PddlPlannerInterface (id "pddl-planner") (msg_id ?plan-id) (final TRUE)
+  ?p <- (pddl-plan (status RUNNING) (planner-id ?planner-id))
+  (PddlPlannerInterface (id "pddl-planner") (msg_id ?planner-id) (final TRUE)
     (success TRUE))
   =>
   (modify ?p (status PLANNED))
@@ -86,8 +100,8 @@
 (defrule pddl-check-if-planner-failed
   "Check whether the planner finished but has not found a plan."
   ?g <- (goal (id ?goal-id))
-  ?p <- (pddl-plan (status RUNNING) (goal-id ?goal-id) (plan-id ?plan-id))
-  (PddlPlannerInterface (id "pddl-planner") (msg_id ?plan-id) (final TRUE)
+  ?p <- (pddl-plan (status RUNNING) (purpose-id ?goal-id) (planner-id ?planner-id))
+  (PddlPlannerInterface (id "pddl-planner") (msg_id ?planner-id) (final TRUE)
     (success FALSE))
   =>
   (printout error "Planning failed for goal " ?goal-id crlf)
@@ -102,18 +116,17 @@
   (return ?i)
 )
 
-(defrule pddl-expand-goal
+(defrule pddl-create-plan-from-robmem
   "Fetch the resulting plan from robot memory and expand the goal."
   ?g <- (goal (id ?goal-id) (mode SELECTED))
   ?t <- (robmem-trigger (name "new-plan") (ptr ?obj))
   ?p <- (pddl-plan
           (status PLANNED)
-          (goal-id ?goal-id)
-          (plan-id ?plan-id&
-            :(eq ?plan-id (bson-get (bson-get ?obj "o") "msg_id")))
+          (purpose-id ?goal-id)
         )
   =>
   (printout t "Fetched a new plan!" crlf)
+  (bind ?plan-id (bson-get (bson-get ?obj "o") "plan"))
   (progn$ (?action (bson-get-array (bson-get ?obj "o") "actions"))
     (bind ?action-name (sym-cat (bson-get ?action "name")))
     ; FF sometimes returns the pseudo-action REACH-GOAL. Filter it out.
@@ -141,15 +154,28 @@
       )
     )
   )
+;  (retract ?p)
+)
+
+(defrule pddl-expand-goal
+  ?g <- (goal (id ?goal-id) (mode SELECTED))
+  (plan (goal-id ?goal-id))
+  (not (robmem-trigger (name "new-plan")))
+  ?p <- (pddl-plan
+          (status PLANNED)
+          (purpose-id ?goal-id)
+          (planner-id ?planner-id))
+  =>
   (modify ?g (mode EXPANDED))
   (retract ?p)
 )
 
-(defrule pddl-clean-up-stale-plans
-  "Clean up pddl-plan facts that were left behind.
-   This may happen if a goal get unselected while the planner is running."
-  ?p <- (pddl-plan (goal-id ?goal-id))
-  (not (goal (id ?goal-id) (mode SELECTED)))
-  =>
-  (retract ?p)
-)
+;(defrule pddl-clean-up-stale-plans
+;  "Clean up pddl-plan facts that were left behind.
+;   This may happen if a goal get unselected while the planner is running."
+;  ?p <- (pddl-plan (purpose-id ?purp-id))
+;  (not (goal (id ?purp-id) (mode SELECTED)))
+;  (not (diagnosis (id ?purp-id)))
+;  =>
+;  (retract ?p)
+;)
