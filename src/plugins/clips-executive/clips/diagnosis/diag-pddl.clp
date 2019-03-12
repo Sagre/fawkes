@@ -1,6 +1,6 @@
 
 ;---------------------------------------------------------------------------
-;  diagnosis.clp - CLIPS executive - diagnosis creation for given problem
+;  diag-pddl.clp - CLIPS executive - diagnosis creation for given problem
 ;
 ;  Created: Sun Mar 09 15:47:23 2019
 ;  Copyright  2019 Daniel Habering

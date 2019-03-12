@@ -12,6 +12,7 @@
 	(slot goal-id (type SYMBOL))
 	(slot cost (type FLOAT))
 	(slot type (type SYMBOL))
+	(slot diag-wm-store (type SYMBOL) (allowed-values FALSE TRUE STORED))
 	(multislot start-time (type INTEGER) (cardinality 2 2) (default 0 0))
 )
 
