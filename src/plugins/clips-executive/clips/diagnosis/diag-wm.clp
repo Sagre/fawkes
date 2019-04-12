@@ -28,13 +28,34 @@
   (modify ?p (diag-wm-store STORED))
   (printout t "Storing world model for plan " ?plan-id crlf)
   (diagnosis-backup-wm ?plan-id "@CONFDIR@/robot-memory")
-  (robmem-restore-collection ?*WM-ROBMEM-SYNC-COLLECTION* "@CONFDIR@/robot-memory/TEST-PLAN" "diagnosis.test")
 )
 
-(defrule diagnosis-wm-test
-  (domain-facts-loaded)
+(defrule diagnosis-update-history
+  (declare (salience ?*SALIENCE-HIGH*))
+  (wm-fact (key domain fact self args? r ?r))
+  (plan (id ?plan-id) (goal-id ?goal-id) (diag-wm-store TRUE))
+  (plan-action (id ?id) (action-name ?name)
+        (plan-id ?plan-id)
+        (goal-id ?goal-id)
+        (state FINAL)
+        (param-names $?p)
+        (param-values $?pv))
+  (not (wm-fact (key diagnosis plan-action ?name args?plan ?plan-id $?)))
   =>
-  (assert (goal (id TEST-GOAL) (mode EXPANDED) (committed-to TEST-PLAN))
-          (plan (id TEST-PLAN) (goal-id TEST-GOAL) (diag-wm-store TRUE))
+  (bind $?args (create$))
+  (loop-for-count (?i 1 (length ?p))
+    (bind $?args (create$ ?args (nth$ ?i ?p) (nth$ ?i ?pv)))
   )
+  (bind $?args (create$ plan ?plan-id id (sym-cat ?id) ?args))
+  (assert (wm-fact (key diagnosis plan-action ?name args? ?args) ))
 )
+
+(defrule diagnosis-cleanup-history
+  (declare (salience ?*SALIENCE-HIGH*))
+  ?wm <- (wm-fact (key diagnosis plan-action ?name args? plan ?plan-id $?))
+  (not (plan (id ?plan-id)))
+  =>
+  (retract ?wm)
+  (printout error "Removed " ?r ?name ?plan-id crlf)
+)
+

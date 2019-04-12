@@ -69,8 +69,7 @@
   (retract ?pg)
   (retract ?pp)
   (path-load "pddl.clp")
-  (path-load "diagnosis/diag-pddl.clp")
-  (path-load "diagnosis/diag-wm.clp")
+  (path-load "diagnosis/diag-init.clp")
   (assert (ff-feature-loaded pddl_planner))
 
 )
