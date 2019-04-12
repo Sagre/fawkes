@@ -15,8 +15,15 @@
 
 (deftemplate diagnosis
   (slot id (type SYMBOL))
+  (slot plan-id (type SYMBOL))
   (slot fault (type STRING))
-  (slot mode (type SYMBOL) (allowed-values CREATED DIAGNOSIS-CREATED FINAL))
+  (slot mode (type SYMBOL) (allowed-values CREATED GENERATED DIAGNOSIS-CREATED FINAL FAILED))
+)
+
+(deftemplate diagnosis-gen
+  (slot id (type SYMBOL))
+  (slot gen-id (type SYMBOL))
+  (slot plan-id (type SYMBOL))
 )
 
 (deftemplate diagnosis-hypothesis
@@ -26,23 +33,62 @@
   (slot prob (type FLOAT))
 )
 
-(deffunction create-diagnosis (?diag-id ?fault)
-  (assert (diagnosis (id ?diag-id)
+
+(deffunction pddl-diagnosis-call (?diag-id ?fault)
+   "Call the PDDL planner for the given diagnose-id with the goal given as string."
+  (bind ?m
+     (blackboard-create-msg "PddlPlannerInterface::pddl-planner" "PlanMessage")
+  )
+  (printout info "Calling PDDL planner")
+  (bind ?planner-id (blackboard-send-msg ?m))
+  (assert (pddl-plan
+    (purpose-id ?diag-id) (goal ?fault) (status PENDING) (planner-id ?planner-id)
+  ))
+)
+
+(deffunction pddl-diagnosis-gen-call (?diag-id ?plan-id ?fault)
+  "Call the Pddl diagnosis generation plugin to create pddl domain and problem file"
+  (bind ?m
+      (blackboard-create-msg "PddlDiagInterface::diag-gen" "GenerateMessage")
+  )
+  (blackboard-set-msg-field ?m "goal" ?fault)
+  (blackboard-set-msg-field ?m "world_model_dump" ?plan-id)
+  (blackboard-set-msg-field ?m "collection" "syncedrobmem.worldmodel")
+  (bind ?gen-id (blackboard-send-msg ?m))
+  (assert (diagnosis-gen (id ?diag-id) (plan-id ?plan-id) (gen-id ?gen-id)))
+)
+
+(deffunction create-diagnosis (?diag-id ?plan-id ?fault)
+  (assert (diagnosis (id ?diag-id) (plan-id ?plan-id)
                 (fault ?fault))
   )
+  (pddl-diagnosis-gen-call ?diag-id ?plan-id ?fault)
+)
+
+
+(defrule diagnosis-generation-finished
+  ?d <- (diagnosis (id ?diag-id) (plan-id ?plan-id) (fault ?fault) (mode CREATED))
+  ?dg <- (diagnosis-gen (id ?diag-id) (plan-id ?plan-id) (gen-id ?gen-id))
+  (PddlDiagInterface (id "diag-gen") (msg_id ?gen_id) (final TRUE) (success TRUE))
+  =>
+  (retract ?dg)
+  (modify ?d (mode GENERATED))
   (pddl-diagnosis-call ?diag-id ?fault)
 )
 
-(defrule diagnosis-test
-  (domain-facts-loaded)
-  (not (diagnosis))
+(defrule diagnosis-generation-failed
+  ?d <- (diagnosis (id ?diag-id) (plan-id ?plan-id) (mode CREATED))
+  ?df <- (diagnosis-gen (id ?diag-id) (plan-id ?plan-id) (gen-id ?gen-id))
+  (PddlDiagInterface (id "diag-gen") (msg_id ?gen_id) (final TRUE) (success FALSE))
   =>
-  (create-diagnosis TEST-DIAG "(and (next FINISH) (not (wp-at WP M2 INPUT)))")
+  (retract ?df)
+  (modify ?d (mode FAILED))
+  (printout error "Failed to generate pddl-diagnosis files for " ?plan-id crlf)
 )
 
 (defrule diagnosis-create-diag-from-robmem
   "Fetch the resulting plan from robot memory and expand the goal."
-  ?g <- (diagnosis (id ?diag-id) (mode CREATED))
+  ?g <- (diagnosis (id ?diag-id) (mode GENERATED))
   ?t <- (robmem-trigger (name "new-plan") (ptr ?obj))
   ?p <- (pddl-plan
           (status PLANNED)
@@ -81,7 +127,7 @@
 )
 
 (defrule diagnosis-finish-hypothesis-generation
-  ?d <- (diagnosis (id ?diag-id) (mode CREATED))
+  ?d <- (diagnosis (id ?diag-id) (mode GENERATED))
   (diagnosis-hypothesis (diag-id ?diag-id))
   (not (robmem-trigger (name "new-plan")))
   ?p <- (pddl-plan (status PLANNED) (purpose-id ?diag-id))

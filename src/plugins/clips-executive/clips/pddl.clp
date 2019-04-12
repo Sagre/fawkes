@@ -36,20 +36,6 @@
   )
 )
 
-(deffunction pddl-diagnosis-call (?diag-id ?fault)
-   "Call the PDDL planner for the given diagnose-id with the goal given as string."
-  (bind ?m
-     (blackboard-create-msg "PddlPlannerInterface::pddl-planner" "PlanMessage")
-  )
-  (blackboard-set-msg-field ?m "goal" ?fault)
-  (printout info "Calling PDDL planner for fault '" ?fault "'" crlf)
-  (bind ?planner-id (blackboard-send-msg ?m))
-  (assert (pddl-plan
-    (purpose-id ?diag-id) (goal ?fault) (status PENDING) (planner-id ?planner-id)
-  ))
-)
-
-
 (defrule pddl-check-if-generation-running
   "Check whether the PDDL generator started."
   ?p <- (pddl-plan (status GEN-PENDING) (gen-id ?gen-id))
