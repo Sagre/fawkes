@@ -38,13 +38,17 @@
         (plan-id ?plan-id)
         (goal-id ?goal-id)
         (state FINAL)
-        (param-names $?p)
-        (param-values $?pv))
-  (not (wm-fact (key diagnosis plan-action ?name args?plan ?plan-id $?)))
+        (param-names $?pa-n)
+        (param-values $?pa-v))
+  (not (wm-fact (key diagnosis plan-action ?name args? plan ?plan-id $?)))
+  (domain-predicate (name ?dn&:(eq ?dn (sym-cat last- ?name))) (param-names $?p))
   =>
   (bind $?args (create$))
-  (loop-for-count (?i 1 (length ?p))
-    (bind $?args (create$ ?args (nth$ ?i ?p) (nth$ ?i ?pv)))
+  (loop-for-count (?i 1 (length ?pa-n))
+    ; Only add parameters defined in last-  and next- predicates
+    (if (neq FALSE (member$ (nth$ ?i ?pa-n) ?p)) then
+     (bind $?args (create$ ?args (nth$ ?i ?pa-n) (nth$ ?i ?pa-v)))
+    )
   )
   (bind $?args (create$ plan ?plan-id id (sym-cat ?id) ?args))
   (assert (wm-fact (key diagnosis plan-action ?name args? ?args) ))
@@ -56,6 +60,6 @@
   (not (plan (id ?plan-id)))
   =>
   (retract ?wm)
-  (printout error "Removed " ?r ?name ?plan-id crlf)
+  (printout t "Removed " ?name ?plan-id " because plan " ?plan-id " does not exist anymore " crlf)
 )
 
