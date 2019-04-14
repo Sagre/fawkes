@@ -71,7 +71,7 @@ class PddlDiagnosisThread
 
   std::string collection_;
   std::string world_model_dump_prefix_;
-  std::string world_model_dump_;
+  std::string plan_;
   std::string world_model_;
   std::string input_path_desc_;
   std::string input_path_domain_;

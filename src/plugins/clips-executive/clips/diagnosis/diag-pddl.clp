@@ -52,7 +52,7 @@
       (blackboard-create-msg "PddlDiagInterface::diag-gen" "GenerateMessage")
   )
   (blackboard-set-msg-field ?m "goal" ?fault)
-  (blackboard-set-msg-field ?m "world_model_dump" ?plan-id)
+  (blackboard-set-msg-field ?m "plan" ?plan-id)
   (blackboard-set-msg-field ?m "collection" "syncedrobmem.worldmodel")
   (bind ?gen-id (blackboard-send-msg ?m))
   (assert (diagnosis-gen (id ?diag-id) (plan-id ?plan-id) (gen-id ?gen-id)))

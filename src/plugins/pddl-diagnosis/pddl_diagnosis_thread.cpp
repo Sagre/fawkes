@@ -77,7 +77,7 @@ PddlDiagnosisThread::init()
   if(config->exists("plugins/pddl-diagnosis/goal"))
     goal_ = config->get_string("plugins/pddl-diagnosis/goal");
   if(config->exists("plugins/pddl-diagnosis/world-model-dump"))
-    world_model_dump_ = config->get_string("plugins/pddl-diagnosis/world-model-dump");
+    plan_ = config->get_string("plugins/pddl-diagnosis/world-model-dump");
 
 
   logger->log_info(name(),"Started Interface on %s",config->get_string("plugins/pddl-diagnosis/interface-name").c_str());
@@ -193,7 +193,7 @@ PddlDiagnosisThread::create_problem_file()
   aggregate_query.append("$facet", facets.obj());
   BSONObj aggregate_query_obj(aggregate_query.obj());
   std::vector<mongo::BSONObj> aggregate_pipeline{aggregate_query_obj};
-  std::string world_model_path = StringConversions::resolve_path(world_model_dump_prefix_ + "/" + world_model_dump_);
+  std::string world_model_path = StringConversions::resolve_path(plan_prefix_ + "/" + plan_);
   if (robot_memory->restore_collection(collection_,world_model_path,"diagnosis.worldmodel") == 0)
   {
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
@@ -288,7 +288,7 @@ PddlDiagnosisThread::create_domain_file()
       BSONObj obj = c->next();
       logger->log_info(name(),"%s",obj.toString().c_str());
       PlanAction pa = bson_to_plan_action(obj);
-      if (pa.plan == world_model_dump_) {
+      if (pa.plan == plan_) {
         history.push_back(pa);
       }
     }
@@ -415,8 +415,8 @@ PddlDiagnosisThread::bb_interface_message_received(Interface *interface, fawkes:
     gen_if_->write();
     if(std::string(msg->goal()) != "")
       goal_ = msg->goal();
-    if(std::string(msg->world_model_dump()) != "")
-      world_model_dump_ = std::string(msg->world_model_dump());// StringConversions::resolve_path(world_model_dump_prefix_ + "/" + std::string(msg->world_model_dump()));
+    if(std::string(msg->plan()) != "")
+      plan_ = std::string(msg->plan());// StringConversions::resolve_path(world_model_dump_prefix_ + "/" + std::string(msg->world_model_dump()));
     if(std::string(msg->collection()) != "" && std::string(msg->collection()).find(".") != std::string::npos)
       collection_ = msg->collection();
     wakeup(); //activates loop where the generation is done
