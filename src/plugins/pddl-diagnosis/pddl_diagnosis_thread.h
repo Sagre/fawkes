@@ -67,6 +67,15 @@ class PddlDiagnosisThread
     std::vector<std::string> param_values;
   } PlanAction;
 
+  typedef struct {
+    std::string              name;
+    std::string              from;
+    std::string              to;
+    std::string              component;
+    bool                     executable;
+    float                    prob;
+  } ComponentTransition;
+
   fawkes::PddlDiagInterface *gen_if_;
 
   std::string collection_;
@@ -90,6 +99,7 @@ class PddlDiagnosisThread
   virtual bool bb_interface_message_received(fawkes::Interface *interface,
                                              fawkes::Message *message) throw();
   PlanAction bson_to_plan_action(mongo::BSONObj obj);
+  ComponentTransition bson_to_comp_trans(mongo::BSONObj obj);
 };
 
 

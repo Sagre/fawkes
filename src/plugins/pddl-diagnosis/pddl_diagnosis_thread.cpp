@@ -297,6 +297,27 @@ PddlDiagnosisThread::create_domain_file()
     return -1;
   }
 
+  BSONObjBuilder query_hardware_edge;
+  query_hardware_edge << "_id" << BSONRegEx("^/hardware/edge");
+  q = query_hardware_edge.done();
+
+  c = robot_memory->query(q,"syncedrobmem.worldmodel");
+  std::map<std::string,std::vector<ComponentTransition>> comp_transitions;
+  if (c) {
+    while(c->more()) {
+      BSONObj obj = c->next();
+      logger->log_info(name(),"%s",obj.toString().c_str());
+      ComponentTransition trans = bson_to_comp_trans(obj);
+      if (!trans.executable) {
+
+        comp_transitions[trans.name].push_back(trans);
+      }
+    }
+  } else {
+    logger->log_error(name(),"Failed to query for hardware component edges (%s) facts",q.toString().c_str());
+    return -1;
+  }
+
   std::vector<PlanAction> history_sorted;
   int history_length = history.size(); 
   for (int i = 1; i <= history_length; ++i) {
@@ -325,6 +346,35 @@ PddlDiagnosisThread::create_domain_file()
     size_t tpl_end_pos =  input_domain.find(">>", cur_pos);
     std::string template_name = input_domain.substr(cur_pos + 3, tpl_end_pos - cur_pos - 3);
     logger->log_info(name(),"Tempname: %s", template_name.c_str());
+    if (template_name == "exog-actions") {
+      input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
+  
+      std::map<std::string,std::vector<ComponentTransition>>::iterator it = comp_transitions.begin();
+      while( it != comp_transitions.end()) {
+          std::string exog_template = "(:action <<#name>>\n :parameters ()\n :precondition (or <<#comps-from>>)\n :effect (and <<#comps-when>> (increase (total-cost) 1))\n)\n\n";
+          ComponentTransition trans = it->second[0];
+          std::string exog_replaced = find_and_replace(exog_template,"<<#name>>",trans.name);
+
+          std::string comps_from = "";
+          for (ComponentTransition trans : it->second) {
+            comps_from += "(comp-state " + trans.component + " " + trans.from + ") ";
+          }
+          exog_replaced = find_and_replace(exog_replaced,"<<#comps-from>>",comps_from);
+
+          std::string comps_when = "";
+          for (ComponentTransition trans : it->second) {
+            comps_when += "\n (when (comp-state " + trans.component + " " + trans.from + ")\n";
+            comps_when += "  (and (not (comp-state " + trans.component + " " + trans.from + ")) (comp-state " + trans.component + " " + trans.to + "))\n )";
+          }
+          exog_replaced = find_and_replace(exog_replaced,"<<#comps-when>>",comps_when);
+          input_domain.insert(cur_pos,exog_replaced);
+          cur_pos = cur_pos + exog_replaced.length();
+
+          logger->log_info(name(),"%s",exog_replaced.c_str());
+      
+        it++;
+      }
+    }
     if (template_name == "order-actions"){
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
       std::string order_template = "(:action order_<<#id>>\n :parameters ()\n :precondition (and (last-<<#lastname>> <<#lastvalues>>))\n :effect (and (not (last-<<#lastname>> <<#lastvalues>>)) (next-<<#name>> <<#values>>))\n)\n\n";
@@ -466,6 +516,43 @@ PddlDiagnosisThread::bson_to_plan_action(BSONObj obj)
     } else {
       ret.param_names.push_back(name);
       ret.param_values.push_back(value);
+    }
+  }
+  return ret;
+}
+
+
+PddlDiagnosisThread::ComponentTransition
+PddlDiagnosisThread::bson_to_comp_trans(BSONObj obj)
+{
+  ComponentTransition ret;
+  std::string content = obj["_id"];
+  content = content.substr(1,content.length() - 2);
+
+  std::vector<std::string> splitted = str_split(content,"?");
+  std::string id = splitted[0];
+  std::string args = splitted[1];
+
+  std::vector<std::string> args_splitted = str_split(args,"&");
+  for (size_t i = 0; i < args_splitted.size(); ++i) {
+    std::string name = str_split(args_splitted[i],"=")[0];
+    std::string value = str_split(args_splitted[i],"=")[1];
+    if (name == "from"){
+      ret.from = value;
+    } else if (name == "comp") {
+      ret.component = value;
+    } else if (name == "to") {
+      ret.to = value;
+    } else if (name == "trans") {
+      ret.name = value;      
+    } else if (name == "exec") {
+      if (value == "true") {
+        ret.executable = true; 
+      } else {
+        ret.executable = false;
+      }
+    } else if (name == "prob") {
+      ret.prob = std::stof(value);
     }
   }
   return ret;
