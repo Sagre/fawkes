@@ -303,14 +303,24 @@ PddlDiagnosisThread::create_domain_file()
 
   c = robot_memory->query(q,"syncedrobmem.worldmodel");
   std::map<std::string,std::vector<ComponentTransition>> comp_transitions;
+  std::vector<std::string> components;
+  std::vector<std::string> states;
   if (c) {
     while(c->more()) {
       BSONObj obj = c->next();
       logger->log_info(name(),"%s",obj.toString().c_str());
       ComponentTransition trans = bson_to_comp_trans(obj);
       if (!trans.executable) {
-
         comp_transitions[trans.name].push_back(trans);
+      }
+      if (std::find(components.begin(), components.end(), trans.component) == components.end()) {
+        components.push_back(trans.component);
+      }
+      if (std::find(states.begin(), states.end(), trans.from) == states.end()) {
+        states.push_back(trans.from);
+      }
+      if (std::find(states.begin(), states.end(), trans.to) == states.end()) {
+        states.push_back(trans.to);
       }
     }
   } else {
@@ -346,6 +356,21 @@ PddlDiagnosisThread::create_domain_file()
     size_t tpl_end_pos =  input_domain.find(">>", cur_pos);
     std::string template_name = input_domain.substr(cur_pos + 3, tpl_end_pos - cur_pos - 3);
     logger->log_info(name(),"Tempname: %s", template_name.c_str());
+    if (template_name == "constants") {
+      input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
+
+      for (std::string state : states) {
+        std::string pddl_state =  state + " - state\n";
+        input_domain.insert(cur_pos,pddl_state);
+        cur_pos = cur_pos + pddl_state.length();
+      }
+
+      for (std::string comp : components) {
+        std::string pddl_comp = comp + " - component\n";
+        input_domain.insert(cur_pos,pddl_comp);
+        cur_pos = cur_pos + pddl_comp.length();
+      }
+    }
     if (template_name == "exog-actions") {
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
   
