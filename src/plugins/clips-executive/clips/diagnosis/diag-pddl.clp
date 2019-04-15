@@ -29,6 +29,7 @@
 (deftemplate diagnosis-hypothesis
   (slot id (type SYMBOL))
   (slot diag-id (type SYMBOL))
+  (slot cost (type FLOAT))
   (slot status (type SYMBOL) (allowed-values POSSIBLE VALID REJECTED))
   (slot prob (type FLOAT))
 )
@@ -97,6 +98,7 @@
   =>
   (printout t "Fetched a new diagnosis!" crlf)
   (bind ?plan-id (bson-get (bson-get ?obj "o") "plan"))
+  (bind ?cost (bson-get (bson-get ?obj "o") "cost"))
   (progn$ (?action (bson-get-array (bson-get ?obj "o") "actions"))
     (bind ?action-name (sym-cat (bson-get ?action "name")))
     ; FF sometimes returns the pseudo-action REACH-GOAL. Filter it out.
@@ -113,7 +115,7 @@
         )
       )
       (assert
-        (diagnosis-hypothesis (id ?plan-id) (diag-id ?diag-id))
+        (diagnosis-hypothesis (id ?plan-id) (diag-id ?diag-id) (cost ?cost))
         (plan-action
           (id ?action-index)
           (goal-id ?diag-id)
