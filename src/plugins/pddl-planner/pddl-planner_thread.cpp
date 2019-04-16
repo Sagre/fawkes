@@ -312,7 +312,6 @@ PddlPlannerThread::kstar_planner()
 
     action a;
     if (line.find("cost") != std::string::npos) {
-      logger->log_info(name(),line.substr(line.find("cost") + 5 , line.length() - 1).c_str());
       if (!curr_plan.empty() && curr_plan.back().cost == 0) {
         curr_plan.back().cost = std::stof(line.substr(line.find("cost")+5, line.length() - 1));
       } 

@@ -73,6 +73,7 @@
 
 (defglobal
 	?*WM-ROBMEM-SYNC-COLLECTION* = "syncedrobmem.worldmodel"
+	?*WM-ROBMEM-DIAGNOSIS-COLLECTION* = "robmem.diagnosis"
 )
 
 (deftemplate wm-robmem-sync-map-entry
@@ -89,11 +90,12 @@
 (deftemplate wm-robmem-sync-conf
 	(multislot wm-fact-key-prefix (type SYMBOL))
 	(slot enabled (type SYMBOL) (allowed-values TRUE FALSE))
+	(slot collection (type STRING))
 )
 
-(deffunction wm-robmem-sync-enable ($?id-prefixes)
+(deffunction wm-robmem-sync-enable (?collection $?id-prefixes)
 	(foreach ?id-prefix ?id-prefixes
-		(assert (wm-robmem-sync-conf (wm-fact-key-prefix (wm-id-to-key ?id-prefix))))
+		(assert (wm-robmem-sync-conf (wm-fact-key-prefix (wm-id-to-key ?id-prefix)) (collection ?collection)))
 	)
 )
 
@@ -219,21 +221,21 @@
 	(return ?query)
 )
 
-(deffunction wm-robmem-sync-fact-update (?wf ?identity ?update-timestamp)
+(deffunction wm-robmem-sync-fact-update (?wf ?identity ?update-timestamp ?collection)
 	(bind ?doc (wm-robmem-sync-create-fact-doc ?wf ?identity ?update-timestamp))
 	(bind ?query (wm-robmem-sync-create-query (fact-slot-value ?wf id) ?update-timestamp))
 
 	;(printout t "Query: " (bson-tostring ?query) crlf)
 	;(printout t "Doc: " (bson-tostring ?doc) crlf)
 
-	(robmem-upsert ?*WM-ROBMEM-SYNC-COLLECTION* ?doc ?query)
+	(robmem-upsert ?collection ?doc ?query)
 	(bson-destroy ?doc)
 	(bson-destroy ?query)
 )
 
 (defrule wm-robmem-sync-fact-added
 	(wm-fact (key cx identity) (value ?identity))
-	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE))
+	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE) (collection ?collection))
 	?wf <- (wm-fact (id ?id) (key $?key-prefix $?rest)
 									(type ?type) (is-list ?is-list) (value ?value) (values $?values))
 	(not (wm-robmem-sync-map-entry (wm-fact-id ?id)))
@@ -244,13 +246,13 @@
 																		(wm-fact-idx (fact-index ?wf))
 																		(update-timestamp ?now)))
 	
-	(wm-robmem-sync-fact-update ?wf ?identity ?now)
+	(wm-robmem-sync-fact-update ?wf ?identity ?now ?collection)
 )
 
 (defrule wm-robmem-sync-fact-removed
 	(wm-fact (key cx identity) (value ?identity))
-	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE))
-	?sm <- (wm-robmem-sync-map-entry (wm-fact-id ?id) (wm-fact-key $?key-prefix $?rest))
+	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE) (collection ?collection))
+	?sm <- (wm-robmem-sync-map-entry (wm-fact-id ?id) (wm-fact-key $?key-prefix $?rest)
 	(not (wm-fact (id ?id)))
 	=>
 	;(printout error "Remove " ?id " from robot memory" crlf)
@@ -259,12 +261,12 @@
 	(bind ?now (time-trunc-ms (now-systime)))
 	(bind ?query (wm-robmem-sync-create-query ?id ?now))
 
-	(robmem-remove ?*WM-ROBMEM-SYNC-COLLECTION* ?query)
+	(robmem-remove ?collection ?query)
 )
 
 (defrule wm-robmem-sync-fact-modified
 	(wm-fact (key cx identity) (value ?identity))
-	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE))
+	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE) (collection ?collection))
 	?wf <- (wm-fact (id ?id) (key $?key-prefix $?rest))
 	?sm <- (wm-robmem-sync-map-entry (wm-fact-id ?id)
 																	 (wm-fact-idx ?idx&:(neq ?idx (fact-index ?wf))))
@@ -273,7 +275,7 @@
 	(bind ?now (time-trunc-ms (now-systime)))
 	(modify ?sm (wm-fact-idx (fact-index ?wf)) (update-timestamp ?now))
 
-	(wm-robmem-sync-fact-update ?wf ?identity ?now)
+	(wm-robmem-sync-fact-update ?wf ?identity ?now ?collection)
 )
 
 (deffunction wm-robmem-sync-update (?obj)

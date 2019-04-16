@@ -279,14 +279,13 @@ PddlDiagnosisThread::create_domain_file()
   query_b << "_id" << BSONRegEx("^/diagnosis/plan-action");
 
   BSONObj q = query_b.done();
-  logger->log_error(name(),"Query syncedrobmem.worldmodel for %s",q.toString().c_str());
+  logger->log_error(name(),"Query robmem.diagnosis for %s",q.toString().c_str());
 
-  std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"syncedrobmem.worldmodel");
+  std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"robmem.diagnosis");
   std::vector<PlanAction> history;
   if (c) {
     while(c->more()){
       BSONObj obj = c->next();
-      logger->log_info(name(),"%s",obj.toString().c_str());
       PlanAction pa = bson_to_plan_action(obj);
       if (pa.plan == plan_) {
         history.push_back(pa);
@@ -301,14 +300,13 @@ PddlDiagnosisThread::create_domain_file()
   query_hardware_edge << "_id" << BSONRegEx("^/hardware/edge");
   q = query_hardware_edge.done();
 
-  c = robot_memory->query(q,"syncedrobmem.worldmodel");
+  c = robot_memory->query(q,"robmem.diagnosis");
   std::map<std::string,std::vector<ComponentTransition>> comp_transitions;
   std::vector<std::string> components;
   std::vector<std::string> states;
   if (c) {
     while(c->more()) {
       BSONObj obj = c->next();
-      logger->log_info(name(),"%s",obj.toString().c_str());
       ComponentTransition trans = bson_to_comp_trans(obj);
       if (!trans.executable) {
         comp_transitions[trans.name].push_back(trans);
@@ -355,7 +353,6 @@ PddlDiagnosisThread::create_domain_file()
   {
     size_t tpl_end_pos =  input_domain.find(">>", cur_pos);
     std::string template_name = input_domain.substr(cur_pos + 3, tpl_end_pos - cur_pos - 3);
-    logger->log_info(name(),"Tempname: %s", template_name.c_str());
     if (template_name == "constants") {
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
 
@@ -394,10 +391,7 @@ PddlDiagnosisThread::create_domain_file()
           exog_replaced = find_and_replace(exog_replaced,"<<#comps-when>>",comps_when);
           input_domain.insert(cur_pos,exog_replaced);
           cur_pos = cur_pos + exog_replaced.length();
-
-          logger->log_info(name(),"%s",exog_replaced.c_str());
-      
-        it++;
+          it++;
       }
     }
     if (template_name == "order-actions"){
@@ -425,7 +419,6 @@ PddlDiagnosisThread::create_domain_file()
         input_domain.insert(cur_pos,order_replaced);
         cur_pos = cur_pos + order_replaced.length();
 
-        logger->log_info(name(),"%s",order_replaced.c_str());
       }
     }
     cur_pos = input_domain.find("<<#",tpl_end_pos);
@@ -434,7 +427,6 @@ PddlDiagnosisThread::create_domain_file()
   std::string output = input_domain;
   //generate output
   std::ofstream ostream(output_path_domain_);
-  logger->log_info(name(),"%s",output_path_domain_.c_str());
   if(ostream.is_open())
   {
     ostream << output.c_str();
