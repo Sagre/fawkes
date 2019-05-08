@@ -34,7 +34,7 @@
 )
 
 (defrule diag-goal-evaluate-subgoal
-    (goal (id ?parent-id) (params ?diag-id))
+    (goal (id ?parent-id) (class ACTIVE-DIAGNOSIS) (params ?diag-id))
     ?sg <- (goal (id ?id) (class ACTIVE-DIAGNOSIS-SENSE) (parent ?parent-id&~nil)
                 (mode FINISHED)
                 (outcome ?outcome))
@@ -45,12 +45,12 @@
     (active-diagnosis-integrate-measurement "test-fact" "TRUE")
     (bind ?final (active-diagnosis-final))
     (if (and (not ?final) (eq ?outcome COMPLETED)) then
-        (printout t "Next sensing subgoal: " ?action crlf)
         (bind ?action (active-diagnosis-get-sensing-action))
+        (printout t "Next sensing subgoal: " ?action crlf)
         ; TODO get action name and params
         (assert (goal (id (sym-cat ACTIVE-DIAGNOSIS-SENSE- (gensym*)))
                         (class ACTIVE-DIAGNOSIS-SENSE)
-                        (parent ?id)
+                        (parent ?parent-id)
                         (type ACHIEVE)
                         (mode FORMULATED)
                         (params ?action))  
@@ -75,7 +75,7 @@
 )
 
 (defrule diag-goal-retract-diag-goal
-    ?g <- (goal (id ?parent-id (class ACTIVE-DIAGNOSIS) (mode EVALUATED)))
+    ?g <- (goal (id ?parent-id) (class ACTIVE-DIAGNOSIS) (mode EVALUATED))
     =>
     (printout t "Retract diagnosis goal" crlf)
     (modify ?g (mode RETRACTED))
@@ -87,7 +87,7 @@
     =>
     (printout t "Clean Up Diagnosis Goals" crlf)
     (do-for-all-facts ((?sg goal)) (eq ?sg:parent-id ?parent-id)
-        (do-for-all-facts ((?p plan)) (eq ?p:goal-id ??sg:id)
+        (do-for-all-facts ((?p plan)) (eq ?p:goal-id ?sg:id)
             (retract ?p)
         )
         (do-for-all-facts ((?pa plan-action)) (eq ?pa:goal-id ?sg:id)
