@@ -17,7 +17,7 @@
   (slot id (type SYMBOL))
   (slot plan-id (type SYMBOL))
   (slot fault (type STRING))
-  (slot mode (type SYMBOL) (allowed-values CREATED GENERATED DIAGNOSIS-CREATED FINAL FAILED))
+  (slot mode (type SYMBOL) (allowed-values CREATED GENERATED DIAGNOSIS-CREATED ACTIVE-DIAGNOSIS FINAL FAILED))
 )
 
 (deftemplate diagnosis-gen
