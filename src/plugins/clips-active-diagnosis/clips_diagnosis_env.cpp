@@ -36,77 +36,148 @@ using namespace mongo;
  */
 
 /** Constructor. */
-ClipsDiagnosisEnvThread::ClipsDiagnosisEnvThread(std::string diag_id)
+ClipsDiagnosisEnvThread::ClipsDiagnosisEnvThread(std::string diag_id,float hypothesis_id)
 	: Thread("ClipsDiagnosisEnvThread", Thread::OPMODE_CONTINUOUS),
-	  CLIPSAspect(diag_id.c_str(), std::string("CLIPS (" + diag_id + ")").c_str())
+	  CLIPSAspect(std::string(diag_id + "-" + std::to_string(hypothesis_id)).c_str(), std::string("CLIPS (" + diag_id + "-" + std::to_string(hypothesis_id) + ")").c_str())
 {
     diag_id_ = diag_id;
+		hypothesis_id_ = hypothesis_id;
 }
 
 /** Destructor. */
 ClipsDiagnosisEnvThread::~ClipsDiagnosisEnvThread()
 {
-}
 
+}
 
 void
 ClipsDiagnosisEnvThread::init()
 {
-	logger->log_error(name(),"Init Diagnosis environment thread");
-	try {
-		std::string test_fact = std::string("(" + diag_id_ + ")");
-    	clips->assert_fact(test_fact);
-    	clips->refresh_agenda();
-		clips->run();
-	
-		CLIPS::Values vfacts;
-		try {
-			vfacts = clips->evaluate("(get-fact-list)");
-		} catch (std::exception &e) {
-			logger->log_error(name(),"Cannot evaluate: %s",e.what());
-		}
-		
-		
+	std::vector<std::string> clips_dirs;
 
-		clips->run();
-		for (CLIPS::Value f : vfacts) {
-			try {
-					logger->log_error(name(),"%s",f.as_string().c_str());
-			} catch (...) {}
+	clips_dirs.insert(clips_dirs.begin(), std::string(SRCDIR) + "/clips/");
 
-		}
-	} catch (Exception &e) {
-		logger->log_error(name(),"Cannot initialize: %s",e.what());
+	MutexLocker lock(clips.objmutex_ptr());
+
+	clips->evaluate(std::string("(path-add-subst \"@BASEDIR@\" \"") + BASEDIR + "\")");
+	clips->evaluate(std::string("(path-add-subst \"@FAWKES_BASEDIR@\" \"") +
+	                FAWKES_BASEDIR + "\")");
+	clips->evaluate(std::string("(path-add-subst \"@RESDIR@\" \"") + RESDIR + "\")");
+	clips->evaluate(std::string("(path-add-subst \"@CONFDIR@\" \"") + CONFDIR + "\")");
+
+	clips->evaluate("(ff-feature-request \"config\")");
+
+	for (size_t i = 0; i < clips_dirs.size(); ++i) {
+		clips->evaluate("(path-add \"" + clips_dirs[i] + "\")");
 	}
 
-	std::string diag_query = std::string("goal-id=" + diag_id_);
-
-	BSONObjBuilder query_b;
-  query_b << "_id" << BSONRegEx(diag_query);
- 	BSONObj q = query_b.done();
- 	logger->log_error(name(),"Query robmem.diagnosis for %s",q.toString().c_str());
-
- 	std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"syncedrobmem.worldmodel");
- 
- 	if (c) {
-   	while(c->more()){
-     		BSONObj obj = c->next();
-			logger->log_info(name(),obj.toString().c_str());
-   	}
-  } else {
-   	logger->log_error(name(),"Failed to query for plan-action facts");
-  	return;
+  std::vector<std::string> files{SRCDIR "/clips/saliences.clp", SRCDIR "/clips/init.clp"};
+	for (const auto f : files) {
+		if (!clips->batch_evaluate(f)) {
+		  logger->log_error(name(), "Failed to initialize CLIPS environment, "
+			                  "batch file '%s' failed.", f.c_str());
+			throw Exception("Failed to initialize CLIPS environment, batch file '%s' failed.",
+			                f.c_str());
+	  }
   }
-    
+
+	clips->assert_fact("(active-diagnosis-init)");
+	clips->refresh_agenda();
+	clips->run();
+	// Verify that initialization did not fail (yet)
+	{
+		CLIPS::Fact::pointer fact = clips->get_facts();
+		while (fact) {
+			CLIPS::Template::pointer tmpl = fact->get_template();
+			if (tmpl->name() == "active-diagnosis-init-stage") {
+				CLIPS::Values v = fact->slot_value("");
+				if (v.size() > 0 && v[0].as_string() == "FAILED") {
+					throw Exception("CLIPS Active Diagnosis initialization failed");
+				}
+			}
+
+			fact = fact->next();
+		}
+	}
+	clips->refresh_agenda();
+	clips->run();
 }
 
+//TODO: Cleanup
+void
+ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
+{
+	MutexLocker lock(clips.objmutex_ptr());
+
+	if (!clips){
+		logger->log_error(name(),"Clips pointer invalid");
+	}
+	CLIPS::Template::pointer wm_fact = clips->get_template("wm-fact");
+	if (wm_fact) {
+		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,wm_fact);
+		tmp->set_slot("id",CLIPS::Value(std::string("\"" + id + "\""),CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("type", CLIPS::Value("BOOL",CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("is-list", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("value", CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+
+		std::string output = "(wm-fact";
+		for (std::string slot : tmp->slot_names()) {
+			output += " (" + slot;
+			for (CLIPS::Value val : tmp->slot_value(slot)) {
+				if(val.type() == CLIPS::TYPE_STRING || val.type() == CLIPS::TYPE_SYMBOL) {
+					output += " " + val.as_string();
+				}
+				else{
+					output += " " + std::to_string(val.as_float());
+				}
+			}
+			if (tmp->slot_value(slot).empty()) {
+				output += " ";
+			}
+			output += ")";
+		}
+		output += ")";
+		try{
+			auto ret = clips->assert_fact(output);
+			if (!ret) {
+				logger->log_error(name(),"Failed to assert fact");
+			} else {
+				clips->refresh_agenda();
+				clips->run();
+			}
+		} catch ( ... ) {
+			logger->log_error(name(),"Failed to assert fact: Exception");
+		}
+	} else {
+		logger->log_error(name(),"Cant find wm-fact template");
+	}
+}
 
 void
 ClipsDiagnosisEnvThread::finalize()
 {
-	clips->assert_fact("(active_diagnosis-finalize)");
-	clips->refresh_agenda();
-	clips->run();
+	MutexLocker lock(clips.objmutex_ptr());
+	CLIPS::Fact::pointer ret = clips->get_facts();
+  while(ret) {
+		std::vector<std::string> slot_names = ret->slot_names();
+		std::string slot_str = "(" + ret->get_template()->name() + " ";
+		for (std::string slot : slot_names) {
+			slot_str += "(" + slot + " ";
+			for (CLIPS::Value val : ret->slot_value(slot)) {
+				if(val.type() == CLIPS::TYPE_STRING || val.type() == CLIPS::TYPE_SYMBOL) {
+					slot_str += val.as_string() + " ";
+				}
+				else{
+					slot_str += std::to_string(val.as_float()) + " ";
+				}
+			}
+			slot_str += ") ";
+		}
+		logger->log_info(name(),slot_str.c_str());
+		ret = ret->next();
+	}
+	logger->log_info(name(),"Killed diagnosis environment: %s %f", diag_id_.c_str(),hypothesis_id_);
+
 }
 
 

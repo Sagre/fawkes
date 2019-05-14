@@ -241,7 +241,6 @@ PddlDiagnosisThread::create_problem_file()
   ctemplate::ExpandTemplate("tpl-cache", ctemplate::DO_NOT_STRIP, &dict, &output);
 
   //generate output
-  logger->log_info(name(), "Output:\n%s", output.c_str());
   std::ofstream ostream(output_path_desc_);
   if(ostream.is_open())
   {
@@ -373,7 +372,7 @@ PddlDiagnosisThread::create_domain_file()
   
       std::map<std::string,std::vector<ComponentTransition>>::iterator it = comp_transitions.begin();
       while( it != comp_transitions.end()) {
-          std::string exog_template = "(:action <<#name>>\n :parameters ()\n :precondition (or <<#comps-from>>)\n :effect (and <<#comps-when>> (increase (total-cost) 1))\n)\n\n";
+          std::string exog_template = "(:action <<#name>>\n :parameters ()\n :precondition (or <<#comps-from>>)\n :effect (and <<#comps-when>> \n (increase (total-cost) 1)\n )\n)\n";
           ComponentTransition trans = it->second[0];
           std::string exog_replaced = find_and_replace(exog_template,"<<#name>>",trans.name);
 
@@ -386,8 +385,9 @@ PddlDiagnosisThread::create_domain_file()
           std::string comps_when = "";
           for (ComponentTransition trans : it->second) {
             comps_when += "\n (when (comp-state " + trans.component + " " + trans.from + ")\n";
-            comps_when += "  (and (not (comp-state " + trans.component + " " + trans.from + ")) (comp-state " + trans.component + " " + trans.to + "))\n )";
+            comps_when += "  (and (not (comp-state " + trans.component + " " + trans.from + ")) (comp-state " + trans.component + " " + trans.to + ") )\n ) ";
           }
+
           exog_replaced = find_and_replace(exog_replaced,"<<#comps-when>>",comps_when);
           input_domain.insert(cur_pos,exog_replaced);
           cur_pos = cur_pos + exog_replaced.length();

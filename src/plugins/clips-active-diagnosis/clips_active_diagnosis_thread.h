@@ -64,8 +64,10 @@ class ClipsActiveDiagnosisThread
 
   CLIPS::Value set_up_active_diagnosis(std::string diag_id);
   CLIPS::Value finalize_diagnosis();
+  void delete_diagnosis();
   CLIPS::Value integrate_measurement(std::string fact, std::string value);
   CLIPS::Value get_sensing_action();
+  std::string clips_value_to_string(CLIPS::Value val);
 
   /** Stub to see name in backtrace for easier debugging. @see Thread::run() */
   protected: virtual void run() { Thread::run(); }

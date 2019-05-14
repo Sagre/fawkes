@@ -25,6 +25,7 @@
 #include <core/threading/thread.h>
 #include <aspect/clock.h>
 #include <aspect/logging.h>
+#include <aspect/configurable.h>
 #include <plugins/clips/aspect/clips.h>
 #include <plugins/robot-memory/aspect/robot_memory_aspect.h>
 #include <utils/time/time.h>
@@ -39,23 +40,27 @@ namespace fawkes {
 class ClipsDiagnosisEnvThread
 : public fawkes::Thread,
 	public fawkes::LoggingAspect,
+	public fawkes::ConfigurableAspect,
 	public fawkes::ClockAspect,
 	public fawkes::CLIPSAspect,
 	public fawkes::RobotMemoryAspect
 {
  public:
-	ClipsDiagnosisEnvThread(std::string diag_id);
+	ClipsDiagnosisEnvThread(std::string diag_id,float hypothesis_id);
 	virtual ~ClipsDiagnosisEnvThread();
 
 	virtual void init();
 	virtual void loop();
 	virtual void finalize();
 
+	void add_wm_fact(std::string id);
+
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */
  protected: virtual void run() { Thread::run(); }
 
  private:
     std::string diag_id_;
+	float hypothesis_id_;
 };
 
 #endif

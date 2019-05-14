@@ -3,10 +3,17 @@
     (not (goal (class ACTIVE-DIAGNOSIS) (params ?diag-id)))
     =>
     (printout t "Started Diagnosis Main Goal" crlf)
-    (assert (goal (class ACTIVE-DIAGNOSIS) (id (sym-cat ACTIVE-DIAGNOSIS- (gensym*)))
+    (bind ?setup-ret (active-diagnosis-set-up (str-cat ?diag-id)))
+    (if ?setup-ret then
+        (assert (goal (class ACTIVE-DIAGNOSIS) (id (sym-cat ACTIVE-DIAGNOSIS- (gensym*)))
                     (params ?diag-id)
                     (sub-type RUN-ALL-OF-SUBGOALS)))
-    (modify ?d (mode ACTIVE-DIAGNOSIS))
+        (modify ?d (mode ACTIVE-DIAGNOSIS))
+    else
+        (printout error "Failed to setup diagnosis environment" crlf)
+        (modify ?d (mode FAILED))
+    )
+    
 )
 
 (defrule diag-goal-select-diagnosis-goal
@@ -86,16 +93,17 @@
     ?g <- (goal (id ?parent-id) (class ACTIVE-DIAGNOSIS) (mode RETRACTED))
     =>
     (printout t "Clean Up Diagnosis Goals" crlf)
-    (do-for-all-facts ((?sg goal)) (eq ?sg:parent-id ?parent-id)
+    (do-for-all-facts ((?sg goal)) (eq ?sg:parent ?parent-id)
         (do-for-all-facts ((?p plan)) (eq ?p:goal-id ?sg:id)
             (retract ?p)
         )
         (do-for-all-facts ((?pa plan-action)) (eq ?pa:goal-id ?sg:id)
             (retract ?pa)
         )
-        (retract ?g)
+        (retract ?sg)
     )
     (retract ?g)
+    (printout t "Done" crlf)
 )
 
 (defrule diag-goal-expand-sense-goal
