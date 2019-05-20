@@ -5,6 +5,14 @@
 ;  Copyright  2017  Till Hofmann <hofmann@kbsg.rwth-aachen.de>
 ;  Licensed under GPLv2+ license, cf. LICENSE file
 ;---------------------------------------------------------------------------
+(defrule domain-load
+  (not (domain-loaded))
+  =>
+  (parse-pddl-domain (path-resolve "rcll2018/diagonsis-domain.pddl"))
+  (assert (domain-loaded))
+  (printout t "Finished parsing pddl domain" crlf)
+)
+
 
 (deftemplate domain-object-type
   "A type in the domain. The type obj must be super-type of all types."

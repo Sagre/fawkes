@@ -78,56 +78,18 @@ void
 ClipsActiveDiagnosisThread::clips_context_destroyed(const std::string &env_name)
 {
   envs_.erase(env_name);
-  logger->log_debug(name(), "Removing environment %s", env_name.c_str());
+  logger->log_error(name(), "Removing environment--- %s", env_name.c_str());
 }
 
-/*
-  Sets up a clips environment for each diagnosis hypothesis
-*/
-CLIPS::Value
-ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
-{
-  std::vector<float> hypothesis_ids;
-  std::map<std::string,fawkes::LockPtr<CLIPS::Environment>>::iterator it;
-  for (it = envs_.begin(); it != envs_.end(); it++) {
-    CLIPS::Fact::pointer ret = it->second->get_facts();
-    while(ret) {
-      CLIPS::Template::pointer tmpl = ret->get_template();
-      if (tmpl->name() == "diagnosis-hypothesis") {
-       try {
-         CLIPS::Value fact_diag_id = ret->slot_value("diag-id")[0];
-            if (fact_diag_id.as_string() == diag_id) {
-              CLIPS::Values fact_id = ret->slot_value("id");
-              if (fact_id.empty()) {
-                  logger->log_error(name(), "Slot id empty");
-              } else {
-                  hypothesis_ids.push_back(fact_id[0].as_float());
-              }
-             
-            }        
-       } catch (Exception &e) {}
-     }
-     ret = ret->next();
-    }
-  }
-
-  for (float hypo_id : hypothesis_ids) {
-    try {
-      auto env_thread_ptr = std::make_shared<ClipsDiagnosisEnvThread>(diag_id,hypo_id);
-      diag_envs_.push_back(env_thread_ptr);
-      thread_collector->add(&(*env_thread_ptr));
-    } catch (fawkes::CannotInitializeThreadException &e) {
-      logger->log_error(name(),"Cannot start diagnosis environment: %s",e.what());
-      return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
-    }
-  }
- 
+bool
+ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_id)
+{ 
   //TODO: worldmodel dump path parsen
-  std::string world_model_path = StringConversions::resolve_path("/home/sagre/uni/fawkes-robotino/cfg/robot-memory/TEST-PLAN");
+  std::string world_model_path = StringConversions::resolve_path(std::string("/home/sagre/uni/fawkes-robotino/cfg/robot-memory/" + plan_id));
   if (robot_memory->restore_collection("syncedrobmem.worldmodel",world_model_path,"diagnosis.worldmodel") == 0)
   {
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
-    return -1;
+    return false;
   }
 
   BSONObjBuilder query_b;
@@ -148,9 +110,145 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
     }
   } else {
     logger->log_error(name(),"Failed to query for worldmodel facts");
-    return -1;
+    return false;
   }
+  return true;
+}
 
+std::string
+ClipsActiveDiagnosisThread::get_plan_id_from_diag_id(const std::string &diag_id)
+{
+  std::map<std::string,fawkes::LockPtr<CLIPS::Environment>>::iterator it;
+  for (it = envs_.begin(); it != envs_.end(); it++) {
+    CLIPS::Fact::pointer ret = it->second->get_facts();
+    while(ret) {
+      CLIPS::Template::pointer tmpl = ret->get_template();
+      if (tmpl->name() == "diagnosis") {
+        try {
+          CLIPS::Value fact_diag_id = ret->slot_value("id")[0];
+          if (clips_value_to_string(fact_diag_id) == diag_id) {
+            CLIPS::Values fact_plan_id = ret->slot_value("plan-id");
+            if (fact_plan_id.empty()) {
+              logger->log_error(name(), "Slot id empty");
+            } else {
+              return fact_plan_id[0].as_string();
+            } 
+          }        
+       } catch (Exception &e) {
+          logger->log_error(name(), "Exception while iterating facts: %s",e.what());
+       }
+      }
+      ret = ret->next();
+    }
+  }
+  return "";
+}
+
+std::vector<float>
+ClipsActiveDiagnosisThread::get_hypothesis_ids(const std::string &diag_id)
+{
+  std::vector<float> hypothesis_ids;
+  std::map<std::string,fawkes::LockPtr<CLIPS::Environment>>::iterator it;
+  for (it = envs_.begin(); it != envs_.end(); it++) {
+    CLIPS::Fact::pointer ret = it->second->get_facts();
+    while(ret) {
+      CLIPS::Template::pointer tmpl = ret->get_template();
+      if (tmpl->name() == "diagnosis-hypothesis") {
+        try {
+          CLIPS::Value fact_diag_id = ret->slot_value("diag-id")[0];
+          if (clips_value_to_string(fact_diag_id) == diag_id) {
+            CLIPS::Values fact_id = ret->slot_value("id");
+            if (fact_id.empty()) {
+              logger->log_error(name(), "Slot id empty");
+            } else {
+              hypothesis_ids.push_back(fact_id[0].as_float());
+            } 
+          }        
+       } catch (Exception &e) {
+          logger->log_error(name(), "Exception while iterating facts: %s",e.what());
+       }
+      }
+      ret = ret->next();
+    }
+  }
+  return hypothesis_ids;
+}
+
+bool
+ClipsActiveDiagnosisThread::diag_env_initiate_plan_actions(const std::string &diag_id)
+{
+  std::map<std::string,fawkes::LockPtr<CLIPS::Environment>>::iterator it;
+  for (it = envs_.begin(); it != envs_.end(); it++) {
+    MutexLocker lock(it->second.objmutex_ptr());
+    CLIPS::Fact::pointer ret = it->second->get_facts();
+    while(ret) {
+      CLIPS::Template::pointer tmpl = ret->get_template();
+      if (tmpl->name() == "plan-action") {
+        try {
+          CLIPS::Value fact_goal_id = ret->slot_value("goal-id")[0];
+          if (clips_value_to_string(fact_goal_id) == diag_id) {
+            for (auto diag_env : diag_envs_) {
+              if (diag_env->get_hypothesis_id() == ret->slot_value("plan-id")[0].as_float()){
+                diag_env->add_plan_action(ret);
+              }
+            }
+          }        
+       } catch (Exception &e) {
+         logger->log_error(name(), "Exception while iterating facts: %s",e.what());
+       }
+      }
+      ret = ret->next();
+    }
+  }
+  return true;
+}
+
+/*
+  Sets up a clips environment for each diagnosis hypothesis
+*/
+CLIPS::Value
+ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
+{
+  std::vector<float> hypothesis_ids = get_hypothesis_ids(diag_id);
+  if (hypothesis_ids.empty()) {
+    logger->log_error(name(),"Failed to get hypothesis ids for diagnosis %s from cx environment", diag_id.c_str());
+    return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+  }
+  logger->log_info(name(),"Finished getting hypothesis ids");
+  for (float hypo_id : hypothesis_ids) {
+    try {
+      auto env_thread_ptr = std::make_shared<ClipsDiagnosisEnvThread>(diag_id,hypo_id);
+      diag_envs_.push_back(env_thread_ptr);
+      thread_collector->add(&(*env_thread_ptr));
+      break;
+    } catch (fawkes::CannotInitializeThreadException &e) {
+      logger->log_error(name(),"Cannot start diagnosis environment: %s",e.what());
+      return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+    }
+  }
+  logger->log_info(name(),"Finished starting diagnosis environments");
+  std::string plan_id = get_plan_id_from_diag_id(diag_id);
+  if (plan_id == "") {
+    logger->log_error(name(),"Failed to get plan-id for diagnosis %s from cx environment",diag_id.c_str());
+    return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+  }
+  logger->log_info(name(),"Finished getting plan_id");
+  if (!diag_env_initiate_wm_facts(plan_id)) {
+    logger->log_error(name(),"Failed to initiate worldmodel for diagnosis environments");
+    delete_diagnosis();
+    return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+  }
+  logger->log_info(name(),"Finished initializing wm-facts");
+  if (!diag_env_initiate_plan_actions(diag_id)) {
+    logger->log_error(name(),"Failed to initiate plan-actions for diagnosis environments");
+    delete_diagnosis();
+    return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+  }
+  logger->log_info(name(),"Finished initializing plan-actions");
+
+  for (auto diag_env : diag_envs_) {
+    diag_env->setup_finished();
+  }
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
 
@@ -161,6 +259,7 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
 CLIPS::Value
 ClipsActiveDiagnosisThread::finalize_diagnosis()
 {
+  MutexLocker lock(envs_["executive"].objmutex_ptr());
   delete_diagnosis();
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
@@ -172,9 +271,9 @@ void
 ClipsActiveDiagnosisThread::delete_diagnosis()
 {
   for (auto diag_env : diag_envs_) {
+    diag_env->wait_loop_done();
     thread_collector->remove(&*diag_env);
   }
-  logger->log_info(name(),"Fake delete");
   diag_envs_.clear();
 
 }

@@ -53,7 +53,16 @@ class ClipsDiagnosisEnvThread
 	virtual void loop();
 	virtual void finalize();
 
+	float get_hypothesis_id() {
+		return hypothesis_id_;
+	}
+	std::string get_diag_id() {
+		return diag_id_;
+	}
+
+	void setup_finished();
 	void add_wm_fact(std::string id);
+	void add_plan_action(CLIPS::Fact::pointer pa_fact);
 
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */
  protected: virtual void run() { Thread::run(); }

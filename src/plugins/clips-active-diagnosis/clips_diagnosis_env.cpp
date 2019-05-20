@@ -55,6 +55,15 @@ ClipsDiagnosisEnvThread::init()
 {
 	std::vector<std::string> clips_dirs;
 
+	try {
+		clips_dirs = config->get_strings("/clips-executive/clips-dirs");
+		for (size_t i = 0; i < clips_dirs.size(); ++i) {
+			if (clips_dirs[i][clips_dirs[i].size()-1] != '/') {
+				clips_dirs[i] += "/";
+			}
+			logger->log_debug(name(), "DIR: %s", clips_dirs[i].c_str());
+		}
+	} catch (Exception &e) {} // ignore, use default
 	clips_dirs.insert(clips_dirs.begin(), std::string(SRCDIR) + "/clips/");
 
 	MutexLocker lock(clips.objmutex_ptr());
@@ -101,6 +110,63 @@ ClipsDiagnosisEnvThread::init()
 	}
 	clips->refresh_agenda();
 	clips->run();
+}
+
+void
+ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
+{
+	MutexLocker lock(clips.objmutex_ptr());
+
+	CLIPS::Template::pointer plan_action = clips->get_template("plan-action");
+	if (plan_action) {
+		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,plan_action);
+		for (std::string slot : tmp->slot_names()) {
+			if (pa_fact->slot_value(slot).empty()) {
+				tmp->set_slot(slot,CLIPS::Values());
+			} else {
+				if (pa_fact->slot_value(slot).size() == 1) {
+					tmp->set_slot(slot,pa_fact->slot_value(slot)[0]);
+				} else {
+					tmp->set_slot(slot,pa_fact->slot_value(slot));
+				}
+					
+			}
+		}
+
+		std::string output = "(plan-action";
+		for (std::string slot : tmp->slot_names()) {
+			output += " (" + slot;
+			for (CLIPS::Value val : tmp->slot_value(slot)) {
+				if(val.type() == CLIPS::TYPE_STRING || val.type() == CLIPS::TYPE_SYMBOL) {
+					output += " " + val.as_string();
+				}
+				else{
+					output += " " + std::to_string(val.as_integer());
+				}
+			}
+			if (tmp->slot_value(slot).empty()) {
+				output += " ";
+			}
+			output += ")";
+		}
+		output += ")";
+		logger->log_info(name(),output.c_str());
+
+		if (!clips->assert_fact(tmp)){
+			logger->log_error(name(),"Failed to assert plan-action %s",tmp->slot_value("action-name")[0].as_string().c_str());
+		}
+
+		clips->refresh_agenda();
+		clips->run();
+	}
+}
+
+void
+ClipsDiagnosisEnvThread::setup_finished()
+{
+	MutexLocker lock(clips.objmutex_ptr());
+
+	clips->assert_fact("(diagnosis-setup-finished)");
 }
 
 //TODO: Cleanup
@@ -177,7 +243,9 @@ ClipsDiagnosisEnvThread::finalize()
 		ret = ret->next();
 	}
 	logger->log_info(name(),"Killed diagnosis environment: %s %f", diag_id_.c_str(),hypothesis_id_);
-
+	clips->clear();
+	clips->refresh_agenda();
+	clips->run();
 }
 
 

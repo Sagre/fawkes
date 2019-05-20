@@ -62,6 +62,11 @@ class ClipsActiveDiagnosisThread
           fawkes::LockPtr<CLIPS::Environment> &clips);
   virtual void clips_context_destroyed(const std::string &env_name);
 
+  std::vector<float> get_hypothesis_ids(const std::string &diag_id);
+  std::string get_plan_id_from_diag_id(const std::string &diag_id);
+  bool diag_env_initiate_wm_facts(const std::string &plan_id);
+  bool diag_env_initiate_plan_actions(const std::string &diag_id);
+
   CLIPS::Value set_up_active_diagnosis(std::string diag_id);
   CLIPS::Value finalize_diagnosis();
   void delete_diagnosis();
