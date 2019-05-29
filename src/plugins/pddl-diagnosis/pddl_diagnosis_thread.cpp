@@ -97,9 +97,8 @@ PddlDiagnosisThread::init()
   }
 }
 
-void
-PddlDiagnosisThread::fill_template_desc(BSONObjBuilder *facets, std::string input) {
-
+std::map<std::string, std::string>
+PddlDiagnosisThread::fill_template_desc(std::string &input) { 
   //find queries in template
   size_t cur_pos = 0;
   std::map<std::string, std::string> templates;
@@ -128,34 +127,8 @@ PddlDiagnosisThread::fill_template_desc(BSONObjBuilder *facets, std::string inpu
     templates[template_name] = query_str;
     //remove query stuff from input (its not part of the ctemplate features)
     input.erase(q_del_pos, tpl_end_pos - q_del_pos);
-
-    try {
-      //fill dictionary to expand query template:
-	    /*
-	    QResCursor cursor = robot_memory->query(fromjson(query_str), collection);
-      while(cursor->more())
-      {
-        BSONObj obj = cursor->next();
-        //dictionary for one entry
-        ctemplate::TemplateDictionary *entry_dict = dict.AddSectionDictionary(template_name);
-        fill_dict_from_document(entry_dict, obj);
-      }
-	    */
-	    mongo::BufBuilder &bb = facets->subarrayStart(template_name);
-	    mongo::BSONArrayBuilder *arrb = new mongo::BSONArrayBuilder(bb);
-	    BSONObjBuilder query;
-	    query.append("$match", fromjson(query_str));
-	    arrb->append(query.obj());
-	    delete arrb;
-    #ifdef HAVE_MONGODB_VERSION_H
-    } catch (mongo::MsgAssertionException &e) {
-    #else
-    } catch (mongo::AssertionException &e) {
-    #endif
-      logger->log_error("PddlDiagnosis", "Template query failed: %s\n%s",
-          e.what(), query_str.c_str());
-    }
   }
+  return templates;
 }
 
 /*
@@ -185,42 +158,39 @@ PddlDiagnosisThread::create_problem_file()
   input_desc = "{{=<< >>=}}" +  input_desc;
   ctemplate::TemplateDictionary dict("pddl-rm");
   //Dictionary how to fill the templates
+  
+  std::map<std::string, std::string> queries = fill_template_desc(input_desc);
 
-  BSONObjBuilder facets;
-  fill_template_desc(&facets,input_desc);
-/*
-  BSONObjBuilder aggregate_query;
-  aggregate_query.append("$facet", facets.obj());
-  BSONObj aggregate_query_obj(aggregate_query.obj());
-  std::vector<mongo::BSONObj> aggregate_pipeline{aggregate_query_obj};
-  std::string world_model_path = StringConversions::resolve_path(plan_prefix_ + "/" + plan_);
+  std::string world_model_path = StringConversions::resolve_path(world_model_dump_prefix_ + "/" + plan_);
   if (robot_memory->restore_collection(collection_,world_model_path,"diagnosis.worldmodel") == 0)
   {
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
     return -1;
   }
-  robot_memory->drop_collection("diagnosis.worldmodel");
-  return 0;
-  //TODO Fix aggregate
-  BSONObj res = robot_memory->aggregate(aggregate_pipeline, "diagnosis.collection");
-  BSONObj result;
+  logger->log_info(name(),"Starting diagnosis pddl file generation");
+  std::map<std::string, std::string>::iterator it = queries.begin();
+  for (;it != queries.end(); it++) {
+    BSONObjBuilder query_b;
+    query_b << "_id" << BSONRegEx(it->second);
 
-  //TODO parse return value of aggregate correctly
-  if (res.hasField("result")) {
-    result = res.getField("result").Obj()["0"].Obj();
-  } else {
-    logger->log_error(name(),"Failed to restore world model: \n %s",res.toString().c_str());
-    return -1;
-  }
-  for( BSONObj::iterator i = result.begin(); i.more(); ) {
-	  BSONElement e = i.next();
-    for( BSONObj::iterator j = e.Obj().begin(); j.more(); ) {
-	    BSONElement f = j.next();
-	    ctemplate::TemplateDictionary *entry_dict = dict.AddSectionDictionary(e.fieldName());
-	    fill_dict_from_document(entry_dict, f.Obj());
+    BSONObj q = query_b.done();
+    logger->log_error(name(),"Query diagnosis.worldmodel for %s on %s",q.toString().c_str(),collection_.c_str());
+
+    std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"diagnosis.worldmodel");
+    if (c) {
+      while(c->more()) {
+        BSONObj obj = c->next();
+        ctemplate::TemplateDictionary *entry_dict = dict.AddSectionDictionary(it->first);
+	      fill_dict_from_document(entry_dict, obj);
+      }
+    } else {
+      logger->log_error(name(),"Failed to query for wm-facts");
+      return -1;
     }
   }
-*/
+  logger->log_info(name(),"Finished template filling");
+  robot_memory->drop_collection("diagnosis.worldmodel");
+
   //Add goal to dictionary
   dict.SetValue("GOAL", goal_);
 
@@ -396,7 +366,11 @@ PddlDiagnosisThread::create_domain_file()
     }
     if (template_name == "order-actions"){
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
-      std::string order_template = "(:action order_<<#id>>\n :parameters ()\n :precondition (and (last-<<#lastname>> <<#lastvalues>>))\n :effect (and (not (last-<<#lastname>> <<#lastvalues>>)) (next-<<#name>> <<#values>>))\n)\n\n";
+      std::string order_template = "(:action order_<<#id>>\n \
+                                      :parameters ()\n \
+                                      :precondition (and (last-<<#lastname>> <<#lastvalues>>))\n \
+                                      :effect (and (not (last-<<#lastname>> <<#lastvalues>>)) (next-<<#name>> <<#values>>))\n \
+                                      )\n\n";
       std::string last_name = "BEGIN";
       std::string last_values = "";
       for (PlanAction pa : history_sorted)
@@ -575,6 +549,63 @@ PddlDiagnosisThread::bson_to_comp_trans(BSONObj obj)
   return ret;
 }
 
+bool PddlDiagnosisThread::is_domain_fact(std::string key_str)
+{
+  std::string domain_fact_prefix = "/domain/fact";
+  auto res = std::mismatch(domain_fact_prefix.begin(), domain_fact_prefix.end(), key_str.begin());
+
+  if (res.first == domain_fact_prefix.end())
+  {
+    return true;
+  }
+  return false;
+}
+
+bool PddlDiagnosisThread::is_domain_object(std::string key_str)
+{
+  std::string domain_fact_prefix = "/domain/object";
+  auto res = std::mismatch(domain_fact_prefix.begin(), domain_fact_prefix.end(), key_str.begin());
+
+  if (res.first == domain_fact_prefix.end())
+  {
+    return true;
+  }
+  return false;
+}
+
+std::string PddlDiagnosisThread::key_get_predicate_name(std::string key)
+{
+  std::vector<std::string> splitted = str_split(key,"?");
+  std::string id = splitted[0];
+  std::string args = splitted[1];
+
+  std::vector<std::string> id_splitted = str_split(id,"/");
+  return id_splitted[3];
+}
+
+std::string PddlDiagnosisThread::key_get_param_values(std::string key)
+{
+  std::vector<std::string> splitted = str_split(key,"?");
+  std::string id = splitted[0];
+  std::string args = splitted[1];
+
+  std::vector<std::string> args_splitted = str_split(args,"&");
+  std::string output;
+  for (std::string arg : args_splitted)
+  {
+    std::vector<std::string> equal_string = str_split(arg,"=");
+    output += " " + equal_string[1];
+  }
+  return output;
+}
+
+std::string PddlDiagnosisThread::key_get_object_type(std::string key)
+{
+  std::vector<std::string> id_splitted = str_split(key,"/");
+  return id_splitted[3];
+}
+
+
 /**
  * Fills a dictionary with key value pairs from a document. Recursive to handle subdocuments
  * @param dict Dictionary to fill
@@ -592,6 +623,13 @@ void PddlDiagnosisThread::fill_dict_from_document(ctemplate::TemplateDictionary 
         break;
       case mongo::String:
         dict->SetValue(prefix + elem.fieldName(), elem.String());
+        if (is_domain_fact(elem.String())) {
+           dict->SetValue("name",key_get_predicate_name(elem.String()));
+           dict->SetValue("param_values",key_get_param_values(elem.String()));
+        }
+        if (is_domain_object(elem.String())) {
+          dict->SetValue("object_type",key_get_object_type(elem.String()));
+        }
         break;
       case mongo::Bool:
         dict->SetValue(prefix + elem.fieldName(), std::to_string(elem.Bool()));
@@ -617,7 +655,10 @@ void PddlDiagnosisThread::fill_dict_from_document(ctemplate::TemplateDictionary 
         {
           b.append(elem.Array()[i]);
         }
-        fill_dict_from_document(dict, b.obj(), prefix + elem.fieldName() + "_");
+        if (b.len() > 0) {
+          fill_dict_from_document(dict, b.obj(), prefix + elem.fieldName() + "_");
+        }
+       
         // additionally feed the whole array as space-separated list
         std::string array_string;
         for (size_t i = 0; i < elem.Array().size(); i++)

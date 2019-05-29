@@ -93,13 +93,19 @@ class PddlDiagnosisThread
 
   int create_problem_file();
   int create_domain_file();
-  void fill_template_desc(mongo::BSONObjBuilder *facets, std::string input);
+  std::map<std::string,std::string> fill_template_desc(std::string &input);
   std::string find_and_replace(const std::string &input, const std::string &find, const std::string &replace);
 
   virtual bool bb_interface_message_received(fawkes::Interface *interface,
                                              fawkes::Message *message) throw();
   PlanAction bson_to_plan_action(mongo::BSONObj obj);
   ComponentTransition bson_to_comp_trans(mongo::BSONObj obj);
+  bool is_domain_fact(std::string key_str);
+  bool is_domain_object(std::string key_str);
+  std::string key_get_predicate_name(std::string key);
+  std::string key_get_param_values(std::string key);
+  std::string key_get_object_type(std::string key);
+
 };
 
 
