@@ -174,7 +174,6 @@ PddlDiagnosisThread::create_problem_file()
     query_b << "_id" << BSONRegEx(it->second);
 
     BSONObj q = query_b.done();
-    logger->log_error(name(),"Query diagnosis.worldmodel for %s on %s",q.toString().c_str(),collection_.c_str());
 
     std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"diagnosis.worldmodel");
     if (c) {
@@ -248,7 +247,6 @@ PddlDiagnosisThread::create_domain_file()
   query_b << "_id" << BSONRegEx("^/diagnosis/plan-action");
 
   BSONObj q = query_b.done();
-  logger->log_error(name(),"Query robmem.diagnosis for %s",q.toString().c_str());
 
   std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"robmem.diagnosis");
   std::vector<PlanAction> history;
@@ -312,6 +310,8 @@ PddlDiagnosisThread::create_domain_file()
       }
     }
   }
+
+
   PlanAction last;
   last.id = history_sorted.size()+1;
   last.name = "FINISH";
@@ -421,6 +421,7 @@ PddlDiagnosisThread::create_domain_file()
 void
 PddlDiagnosisThread::loop()
 {
+
   if (create_problem_file() == -1) {
     gen_if_->set_final(true);
     gen_if_->set_success(false);
