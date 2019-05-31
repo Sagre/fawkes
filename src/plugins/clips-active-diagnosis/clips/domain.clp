@@ -841,11 +841,7 @@
 			)
 		)
 	)
-  (if (neq ?op wp-get-shelf)
-  then
-	  (modify ?pa (state EFFECTS-APPLIED))
-  )
-
+  (modify ?pa (state EFFECTS-APPLIED))
 )
 
 (defrule domain-effect-sensed-positive-holds
