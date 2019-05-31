@@ -30,8 +30,9 @@ SUBDIRS	= bbsync bblogger webview ttmainloop rrd \
 	  mongodb mongodb_log robot-memory clips-robot-memory pddl-robot-memory \
 	  openrave-robot-memory openni refboxcomm ros player xmlrpc gossip \
 	  robot_state_publisher gazebo dynamixel navgraph-interactive \
-	  pddl-planner stn-generator clips-executive \
-	  asp plexil cedar hardware-models pddl-diagnosis clips-active-diagnosis
+	  pddl-planner stn-generator \
+	  clips-executive \
+	  asp plexil hardware-models pddl-diagnosis clips-active-diagnosis
 
 include $(BUILDSYSDIR)/rules.mk
 
