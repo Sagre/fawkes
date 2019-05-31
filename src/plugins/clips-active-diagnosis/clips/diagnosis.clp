@@ -14,7 +14,7 @@
     (declare (salience -1))
     (diagnosis-setup-finished)
     ?dss <- (diagnosis-setup-stage (state DOMAIN-LOADED))
-    ?pa <- (plan-action (id ?id) (state FORMULATED) (action-name ?an) (executable TRUE))
+    ?pa <- (plan-action (id ?id) (state FORMULATED) (action-name ?an)); (executable TRUE))
     (not (plan-action (id ?id2&:(< ?id2 ?id)) (state FORMULATED)))
     (not (plan-action (goal-id ?goal-id) (plan-id ?plan-id) (state ?state&:(and (neq ?state FINAL) (neq ?state FORMULATED)))))
     =>
@@ -37,6 +37,6 @@
     ?dss <- (diagnosis-setup-stage (state DOMAIN-LOADED))
     (plan-action (state FINAL))
     =>
-    (modify ?dss (state HISTORY-PROPAGETED))
+    (modify ?dss (state HISTORY-PROPAGATED))
     (printout t "Finished history propagation" crlf)
 )

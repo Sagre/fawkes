@@ -7,7 +7,6 @@
 ;---------------------------------------------------------------------------
 (defrule domain-load
   ?dss <- (diagnosis-setup-stage (state INIT))
-  (diagnosis-setup-finished)
   =>
   (parse-pddl-domain (path-resolve "rcll2018/domain.pddl"))
   (assert (domain-loaded))
@@ -183,7 +182,7 @@
     (default POSITIVE))
 )
 
-(deftemplate domain-action-const
+(deftemplate domain-action-cost
   "Cost of an action"
   (slot part-of (type SYMBOL))
   (slot cost-name (type SYMBOL))
@@ -799,7 +798,7 @@
 	=>
 	(do-for-all-facts ((?e domain-effect) (?pred domain-predicate))
 		(and (not ?pred:sensed) (eq ?e:part-of ?op) (eq ?e:predicate ?pred:name))
-    (printout t "Try effect: " ?e:predicate " of " ?e:part-of " with condition " ?e:condition crlf)
+    ;(printout t "Try effect: " ?e:predicate " of " ?e:part-of " with condition " ?e:condition crlf)
 		; apply if this effect is unconditional or the condition is satisfied
 		(if (or (not (any-factp ((?cep domain-precondition)) (eq ?cep:part-of ?e:condition)))
 						(any-factp ((?cep domain-precondition))
@@ -807,7 +806,7 @@
                             (eq ?cep:goal-id ?g) (eq ?cep:plan-id ?p)
                             ?cep:grounded (eq ?cep:grounded-with ?id))))
 		 then
-      (printout t "Apply Effect" crlf)
+      ;(printout t "Apply Effect" crlf)
 			(bind ?values
 						(domain-ground-effect ?e:param-names ?e:param-constants
 																	?action-param-names ?action-param-values))
@@ -815,7 +814,7 @@
 			(if (eq ?e:type POSITIVE)
 			 then
 				(assert (domain-fact (name ?pred:name) (param-values ?values)))
-        (printout t "Effect: " ?pred:name " " ?values crlf)
+        ;(printout t "Effect: " ?pred:name " " ?values crlf)
 			 else
         ; Check if there is also a positive effect for the predicate with the
         ; same values. Only apply the negative effect if no such effect
@@ -834,7 +833,7 @@
         then
 				  (delayed-do-for-all-facts ((?df domain-fact))
 					  (and (eq ?df:name ?pred:name) (eq ?df:param-values ?values))
-            (printout t "Effect: not " ?pred:name " " ?values crlf)
+            ;(printout t "Effect: not " ?pred:name " " ?values crlf)
 					  (retract ?df)
           )
         )

@@ -35,7 +35,7 @@
 )
 
 (deftemplate diagnosis-setup-stage
-	(slot state (type SYMBOL) (allowed-values INIT DOMAIN-LOADED HISTORY-PROPAGETED))
+	(slot state (type SYMBOL) (allowed-values INIT DOMAIN-LOADED HISTORY-PROPAGATED))
 )
 
 (defrule active-diagnosis-load-config
