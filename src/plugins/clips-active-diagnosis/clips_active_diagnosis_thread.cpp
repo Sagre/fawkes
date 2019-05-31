@@ -225,7 +225,6 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
       auto env_thread_ptr = std::make_shared<ClipsDiagnosisEnvThread>(diag_id,hypo_id);
       diag_envs_.push_back(env_thread_ptr);
       thread_collector->add(&(*env_thread_ptr));
-      break;
     } catch (fawkes::CannotInitializeThreadException &e) {
       logger->log_error(name(),"Cannot start diagnosis environment: %s",e.what());
       return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
@@ -244,18 +243,6 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
     return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
   }
   logger->log_info(name(),"Finished initializing wm-facts");
-  
-  //TODO: Thats a bad way to wait for the environments to finish...
-  bool clips_init_finished = false;
-  while (!clips_init_finished) {
-    clips_init_finished = true;
-    for (auto diag_env : diag_envs) {
-      if (!diag_env->clips_init_finished()) {
-        clips_init_finished = false;
-        break;
-      }
-    }
-  }
 
   if (!diag_env_initiate_plan_actions(diag_id)) {
     logger->log_error(name(),"Failed to initiate plan-actions for diagnosis environments");
@@ -266,6 +253,17 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
 
   for (auto diag_env : diag_envs_) {
     diag_env->setup_finished();
+  }
+   //TODO: Thats a bad way to wait for the environments to finish...
+  bool clips_init_finished = false;
+  while (!clips_init_finished) {
+    clips_init_finished = true;
+    for (auto diag_env : diag_envs_) {
+      if (!diag_env->clips_init_finished()) {
+        clips_init_finished = false;
+        break;
+      }
+    }
   }
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
@@ -278,7 +276,7 @@ CLIPS::Value
 ClipsActiveDiagnosisThread::finalize_diagnosis()
 {
   MutexLocker lock(envs_["executive"].objmutex_ptr());
-  //delete_diagnosis();
+  delete_diagnosis();
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
 

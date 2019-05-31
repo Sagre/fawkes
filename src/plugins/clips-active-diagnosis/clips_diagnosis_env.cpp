@@ -141,31 +141,9 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
 			}
 		}
 
-		std::string output = "(plan-action";
-		for (std::string slot : tmp->slot_names()) {
-			output += " (" + slot;
-			for (CLIPS::Value val : tmp->slot_value(slot)) {
-				if(val.type() == CLIPS::TYPE_STRING || val.type() == CLIPS::TYPE_SYMBOL) {
-					output += " " + val.as_string();
-				}
-				else{
-					output += " " + std::to_string(val.as_integer());
-				}
-			}
-			if (tmp->slot_value(slot).empty()) {
-				output += " ";
-			}
-			output += ")";
-		}
-		output += ")";
-		logger->log_info(name(),output.c_str());
-
 		if (!clips->assert_fact(tmp)){
 			logger->log_error(name(),"Failed to assert plan-action %s",tmp->slot_value("action-name")[0].as_string().c_str());
 		}
-
-		clips->refresh_agenda();
-		clips->run();
 	}
 }
 
@@ -179,8 +157,12 @@ ClipsDiagnosisEnvThread::clips_init_finished()
 	{
 		CLIPS::Fact::pointer fact = clips->get_facts();
 		while (fact) {
-			if (fact->as_string() == "(domain-loaded)") {
-				return true;
+			CLIPS::Template::pointer tmpl = fact->get_template();
+			if (tmpl->name() == "diagnosis-setup-stage") {
+				CLIPS::Values v = fact->slot_value("state");
+				if (v.size() > 0 && v[0].as_string() == "HISTORY-PROPAGATED") {
+					return true;
+				}
 			}
 			fact = fact->next();
 		}
@@ -211,35 +193,17 @@ ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
 	if (wm_fact) {
 		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,wm_fact);
 		tmp->set_slot("id",CLIPS::Value(std::string("\"" + id + "\""),CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("key",CLIPS::Values());
 		tmp->set_slot("type", CLIPS::Value("BOOL",CLIPS::TYPE_SYMBOL));
 		tmp->set_slot("is-list", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
 		tmp->set_slot("value", CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("values",CLIPS::Values());
 
-		std::string output = "(wm-fact";
-		for (std::string slot : tmp->slot_names()) {
-			output += " (" + slot;
-			for (CLIPS::Value val : tmp->slot_value(slot)) {
-				if(val.type() == CLIPS::TYPE_STRING || val.type() == CLIPS::TYPE_SYMBOL) {
-					output += " " + val.as_string();
-				}
-				else{
-					output += " " + std::to_string(val.as_float());
-				}
-			}
-			if (tmp->slot_value(slot).empty()) {
-				output += " ";
-			}
-			output += ")";
-		}
-		output += ")";
 		try{
-			auto ret = clips->assert_fact(output);
+			auto ret = clips->assert_fact(tmp);
 			if (!ret) {
 				logger->log_error(name(),"Failed to assert fact");
-			} else {
-				clips->refresh_agenda();
-				clips->run();
-			}
+			} 
 		} catch ( ... ) {
 			logger->log_error(name(),"Failed to assert fact: Exception");
 		}
@@ -252,7 +216,7 @@ void
 ClipsDiagnosisEnvThread::finalize()
 {
 	MutexLocker lock(clips.objmutex_ptr());
-	CLIPS::Fact::pointer ret = clips->get_facts();
+/*	CLIPS::Fact::pointer ret = clips->get_facts();
   while(ret) {
 		std::vector<std::string> slot_names = ret->slot_names();
 		std::string slot_str = "(" + ret->get_template()->name() + " ";
@@ -270,7 +234,7 @@ ClipsDiagnosisEnvThread::finalize()
 		}
 		logger->log_info(name(),slot_str.c_str());
 		ret = ret->next();
-	}
+	}*/
 	logger->log_info(name(),"Killed diagnosis environment: %s %f", diag_id_.c_str(),hypothesis_id_);
 	clips->clear();
 	clips->refresh_agenda();
