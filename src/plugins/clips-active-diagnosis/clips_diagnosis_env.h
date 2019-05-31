@@ -59,7 +59,7 @@ class ClipsDiagnosisEnvThread
 	std::string get_diag_id() {
 		return diag_id_;
 	}
-
+	bool clips_init_finished()
 	void setup_finished();
 	void add_wm_fact(std::string id);
 	void add_plan_action(CLIPS::Fact::pointer pa_fact);

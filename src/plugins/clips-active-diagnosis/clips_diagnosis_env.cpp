@@ -122,9 +122,17 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
 		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,plan_action);
 		for (std::string slot : tmp->slot_names()) {
 			if (pa_fact->slot_value(slot).empty()) {
-				tmp->set_slot(slot,CLIPS::Values());
+				if (plan_action->slot_default_type(slot) == CLIPS::DefaultType::NO_DEFAULT) {
+					logger->log_error(name(),"Slot %s of plan action is missing a value. This will lead to undefined behaviour of this environment",slot.c_str());
+					return;
+				}
+				if (plan_action->is_multifield_slot(slot)){
+					tmp->set_slot(slot,CLIPS::Values());
+				} else {
+					tmp->set_slot(slot,CLIPS::Value());
+				}
 			} else {
-				if (pa_fact->slot_value(slot).size() == 1) {
+				if (!plan_action->is_multifield_slot(slot)) {
 					tmp->set_slot(slot,pa_fact->slot_value(slot)[0]);
 				} else {
 					tmp->set_slot(slot,pa_fact->slot_value(slot));
@@ -161,11 +169,32 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
 	}
 }
 
+bool
+ClipsDiagnosisEnvThread::clips_init_finished()
+{
+	MutexLocker lock(clips.objmutex_ptr());
+	clips->refresh_agenda();
+	clips->run();
+	// Verify that initialization did not fail (yet)
+	{
+		CLIPS::Fact::pointer fact = clips->get_facts();
+		while (fact) {
+			if (fact->as_string() == "(domain-loaded)") {
+				return true;
+			}
+			fact = fact->next();
+		}
+	}
+	return false;
+}
+
 void
 ClipsDiagnosisEnvThread::setup_finished()
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
+	clips->refresh_agenda();
+	clips->run();
 	clips->assert_fact("(diagnosis-setup-finished)");
 }
 

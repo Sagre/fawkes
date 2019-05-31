@@ -86,7 +86,7 @@ ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_i
 { 
   //TODO: worldmodel dump path parsen
   std::string world_model_path = StringConversions::resolve_path(std::string("/home/sagre/uni/fawkes-robotino/cfg/robot-memory/" + plan_id));
-  if (robot_memory->restore_collection("syncedrobmem.worldmodel",world_model_path,"diagnosis.worldmodel") == 0)
+  if (robot_memory->restore_collection("pddl.worldmodel",world_model_path,"diagnosis.worldmodel") == 0)
   {
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
     return false;
@@ -96,7 +96,7 @@ ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_i
   query_b << "_id" << BSONRegEx("^/domain/fact");
 
   BSONObj q = query_b.done();
-
+  try{
   std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"diagnosis.worldmodel");
   if (c) {
     while(c->more()){
@@ -110,6 +110,10 @@ ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_i
     }
   } else {
     logger->log_error(name(),"Failed to query for worldmodel facts");
+    return false;
+  }
+  } catch (mongo::UserException &e) {
+    logger->log_error(name(),"Exception while filling wm-facts: %s", e.toString().c_str());
     return false;
   }
   return true;
@@ -209,6 +213,7 @@ ClipsActiveDiagnosisThread::diag_env_initiate_plan_actions(const std::string &di
 CLIPS::Value
 ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
 {
+  logger->log_info(name(),"Starting to setup diagnosis environment for %s",diag_id.c_str());
   std::vector<float> hypothesis_ids = get_hypothesis_ids(diag_id);
   if (hypothesis_ids.empty()) {
     logger->log_error(name(),"Failed to get hypothesis ids for diagnosis %s from cx environment", diag_id.c_str());
@@ -239,6 +244,19 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
     return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
   }
   logger->log_info(name(),"Finished initializing wm-facts");
+  
+  //TODO: Thats a bad way to wait for the environments to finish...
+  bool clips_init_finished = false;
+  while (!clips_init_finished) {
+    clips_init_finished = true;
+    for (auto diag_env : diag_envs) {
+      if (!diag_env->clips_init_finished()) {
+        clips_init_finished = false;
+        break;
+      }
+    }
+  }
+
   if (!diag_env_initiate_plan_actions(diag_id)) {
     logger->log_error(name(),"Failed to initiate plan-actions for diagnosis environments");
     delete_diagnosis();
@@ -260,7 +278,7 @@ CLIPS::Value
 ClipsActiveDiagnosisThread::finalize_diagnosis()
 {
   MutexLocker lock(envs_["executive"].objmutex_ptr());
-  delete_diagnosis();
+  //delete_diagnosis();
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
 

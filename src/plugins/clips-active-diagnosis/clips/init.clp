@@ -34,6 +34,10 @@
 	(slot error-msg (type STRING))
 )
 
+(deftemplate diagnosis-setup-stage
+	(slot state (type SYMBOL) (allowed-values INIT DOMAIN-LOADED HISTORY-PROPAGETED))
+)
+
 (defrule active-diagnosis-load-config
   (declare (salience ?*SALIENCE-INIT*))
   (active-diagnosis-init)
@@ -293,4 +297,5 @@
 	 (printout t "Initialization completed" crlf)
 	 (assert (active-diagnosis-initialized))
 	)
+	(assert (diagnosis-setup-stage (state INIT)))
 )
