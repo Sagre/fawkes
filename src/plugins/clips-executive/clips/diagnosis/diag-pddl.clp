@@ -54,7 +54,7 @@
   )
   (blackboard-set-msg-field ?m "goal" ?fault)
   (blackboard-set-msg-field ?m "plan" ?plan-id)
-  (blackboard-set-msg-field ?m "collection" "syncedrobmem.worldmodel")
+  (blackboard-set-msg-field ?m "collection" "pddl.worldmodel")
   (bind ?gen-id (blackboard-send-msg ?m))
   (assert (diagnosis-gen (id ?diag-id) (plan-id ?plan-id) (gen-id ?gen-id)))
 )
@@ -66,13 +66,13 @@
   (pddl-diagnosis-gen-call ?diag-id ?plan-id ?fault)
 )
 
-
 (defrule diagnosis-generation-finished
   ?d <- (diagnosis (id ?diag-id) (plan-id ?plan-id) (fault ?fault) (mode CREATED))
   ?dg <- (diagnosis-gen (id ?diag-id) (plan-id ?plan-id) (gen-id ?gen-id))
   (PddlDiagInterface (id "diag-gen") (msg_id ?gen_id) (final TRUE) (success TRUE))
   =>
   (retract ?dg)
+  (printout error "Finished generation of pddl-diagnosis files for " ?plan-id crlf)
   (modify ?d (mode GENERATED))
   (pddl-diagnosis-call ?diag-id ?fault)
 )
@@ -129,6 +129,8 @@
 )
 
 (defrule diagnosis-finish-hypothesis-generation
+  ; Give domain rules time to add param-names to actions
+  (declare (salience -1))
   ?d <- (diagnosis (id ?diag-id) (mode GENERATED))
   (diagnosis-hypothesis (diag-id ?diag-id))
   (not (robmem-trigger (name "new-plan")))

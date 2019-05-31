@@ -11,12 +11,11 @@
 ; has to be stored in order to enable the reevaluation of the plan in case of a failure
 
 
-
 (deffunction diagnosis-backup-wm (?plan-id ?dir)
   (bind ?dump-path (str-cat ?dir "/" ?plan-id))
-  (bind ?succ (robmem-dump-collection ?*WM-ROBMEM-SYNC-COLLECTION* ?dump-path))
+  (bind ?succ (robmem-dump-collection ?*WM-PDDL-COLLECTION* ?dump-path))
   (if (eq ?succ FALSE) then (printout error "Failed to backup world model")
-                       else (printout t "Stored backup of " ?*WM-ROBMEM-SYNC-COLLECTION* " to " ?dump-path crlf))
+                       else (printout t "Stored backup of " ?*WM-PDDL-COLLECTION* " to " ?dump-path crlf))
   (printout t ?succ crlf)
 )
 
@@ -33,14 +32,14 @@
 (defrule diagnosis-update-history
   (declare (salience ?*SALIENCE-HIGH*))
   (wm-fact (key domain fact self args? r ?r))
-  (plan (id ?plan-id) (goal-id ?goal-id) (diag-wm-store TRUE))
+  (plan (id ?plan-id) (goal-id ?goal-id) (diag-wm-store STORED))
   (plan-action (id ?id) (action-name ?name)
         (plan-id ?plan-id)
         (goal-id ?goal-id)
         (state FINAL)
         (param-names $?pa-n)
         (param-values $?pa-v))
-  (not (wm-fact (key diagnosis plan-action ?name args? plan ?plan-id $?)))
+  (not (wm-fact (key diagnosis plan-action ?name args? plan ?plan-id id ?id2&:(eq ?id2 (sym-cat ?id)) $?)))
   (domain-predicate (name ?dn&:(eq ?dn (sym-cat last- ?name))) (param-names $?p))
   =>
   (bind $?args (create$))
