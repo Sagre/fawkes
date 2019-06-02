@@ -19,7 +19,7 @@
  *  Read the full text in the LICENSE.GPL file in the doc directory.
  */
 
-#include "clips_active_diagnosis_thread.h"
+#include "clips_diagnosis_env.h"
 
 #include <utils/misc/string_conversions.h>
 #include <utils/misc/string_split.h>
@@ -212,6 +212,40 @@ ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
 	}
 }
 
+std::string
+ClipsDiagnosisEnvThread::fact_to_string(CLIPS::Fact::pointer fact)
+{
+  CLIPS::Template::pointer tmpl = fact->get_template();
+  std::string ret = "(";
+  ret += tmpl->name();
+  for (std::string slot : tmpl->slot_names()) {
+    ret += " (" + slot;
+    for (CLIPS::Value val : fact->slot_value(slot)) {
+      ret += " " + clips_value_to_string(val);
+    }
+    ret += ")";
+  }
+  ret += ")";
+  return ret;
+}
+
+std::vector<std::string>
+ClipsDiagnosisEnvThread::get_fact_strings()
+{
+	MutexLocker lock(clips.objmutex_ptr());
+	std::vector<std::string> ret;
+	
+	CLIPS::Fact::pointer fact_ptr = clips->get_facts();
+	while (fact_ptr) {
+		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
+		if (tmpl->name() == "wm-fact") {
+			ret.push_back(fact_to_string(fact_ptr));
+		}
+		fact_ptr = fact_ptr->next();
+	}
+	return ret;
+}
+
 void
 ClipsDiagnosisEnvThread::finalize()
 {
@@ -249,4 +283,28 @@ ClipsDiagnosisEnvThread::loop()
 
 	clips->refresh_agenda();
 	clips->run();
+}
+
+std::string
+ClipsDiagnosisEnvThread::clips_value_to_string(CLIPS::Value val)
+{
+  switch (val.type()){
+    case CLIPS::TYPE_STRING:
+      return val.as_string();
+      break;
+    case CLIPS::TYPE_SYMBOL:
+      return val.as_string();
+      break;
+    case CLIPS::TYPE_INSTANCE_NAME:
+      return val.as_string(); 
+      break;
+    case CLIPS::TYPE_FLOAT:
+      return std::to_string(val.as_float());
+      break;
+    case CLIPS::TYPE_INTEGER:
+      return std::to_string(val.as_float());
+      break;
+    default:
+      return "";
+  }
 }

@@ -1,5 +1,5 @@
 /***************************************************************************
- *  clips_active_diagnosis_thread.h - CLIPS-based active_diagnosis plugin
+ *  clips_common_env.h - CLIPS-based active_diagnosis plugin
  *
  *  Created: Tue Sep 19 11:59:44 2017
  *  Copyright  2006-2017  Tim Niemueller [www.niemueller.de]
@@ -19,8 +19,8 @@
  *  Read the full text in the LICENSE.GPL file in the doc directory.
  */
 
-#ifndef _PLUGINS_CLIPS_ACTIVE_DIAGNOSIS_ENV_CLIPS_DIAGNOSIS_ENV_THREAD_H_
-#define _PLUGINS_CLIPS_ACTIVE_DIAGNOSIS_CLIPS_DIAGNOSIS_ENV_THREAD_H_
+#ifndef _PLUGINS_CLIPS_COMMON_ENV_CLIPS_COMMON_THREAD_H_
+#define _PLUGINS_CLIPS_COMMON_ENV_CLIPS_COMMON_THREAD_H_
 
 #include <core/threading/thread.h>
 #include <aspect/clock.h>
@@ -37,7 +37,7 @@ namespace fawkes {
 	class ActionSkillMapping;
 }
 
-class ClipsDiagnosisEnvThread
+class ClipsCommonEnvThread
 : public fawkes::Thread,
 	public fawkes::LoggingAspect,
 	public fawkes::ConfigurableAspect,
@@ -46,34 +46,19 @@ class ClipsDiagnosisEnvThread
 	public fawkes::RobotMemoryAspect
 {
  public:
-	ClipsDiagnosisEnvThread(std::string diag_id,float hypothesis_id);
-	virtual ~ClipsDiagnosisEnvThread();
+	ClipsCommonEnvThread();
+	virtual ~ClipsCommonEnvThread();
 
 	virtual void init();
 	virtual void loop();
 	virtual void finalize();
 
-	float get_hypothesis_id() {
-		return hypothesis_id_;
-	}
-	std::string get_diag_id() {
-		return diag_id_;
-	}
-	std::string fact_to_string(CLIPS::Fact::pointer fact);
-	std::string clips_value_to_string(CLIPS::Value val);
-	std::vector<std::string> get_fact_strings();
-
-	bool clips_init_finished();
-	void setup_finished();
 	void add_wm_fact(std::string id);
-	void add_plan_action(CLIPS::Fact::pointer pa_fact);
 
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */
  protected: virtual void run() { Thread::run(); }
 
  private:
-    std::string diag_id_;
-	float hypothesis_id_;
 };
 
 #endif

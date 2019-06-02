@@ -230,6 +230,9 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
       return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
     }
   }
+  common_env_ = std::make_shared<ClipsCommonEnvThread>();
+  thread_collector->add(&(*common_env_));
+
   logger->log_info(name(),"Finished starting diagnosis environments");
   std::string plan_id = get_plan_id_from_diag_id(diag_id);
   if (plan_id == "") {
@@ -292,6 +295,9 @@ ClipsActiveDiagnosisThread::delete_diagnosis()
   }
   diag_envs_.clear();
 
+  common_env_->wait_loop_done();
+  thread_collector->remove(&*common_env_);
+
 }
 
 /*
@@ -303,17 +309,36 @@ ClipsActiveDiagnosisThread::integrate_measurement(std::string fact, std::string 
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
 
-
 /*
   Selects the next action according to the current state of each diagnosis environment
 */
 CLIPS::Value
 ClipsActiveDiagnosisThread::get_sensing_action() 
 {
-/*
+  std::map<std::string,int> fact_occurences;
 
-*/
-    return CLIPS::Value("test-action");
+  for (auto diag_env : diag_envs_) {
+    std::vector<std::string> diag_facts = diag_env->get_fact_strings();
+    for (std::string fact_string : diag_facts) {
+      if (fact_occurences.find(fact_string) == fact_occurences.end()) {
+        fact_occurences[fact_string] = 1;
+      } else {
+        fact_occurences[fact_string]++;
+      }
+    }
+  }
+
+  std::map<std::string,int>::iterator it = fact_occurences.begin();
+  for (;it != fact_occurences.end(); it++)
+  {
+    if (it->second != (int)diag_envs_.size()) {
+logger->log_info(name(),"%s \t\t\t %d",it->first.c_str(),it->second);
+    } else {
+      common_env_->add_wm_fact(it->first);
+    }
+    
+  }
+  return CLIPS::Value("test-action");
 }
 
 std::string

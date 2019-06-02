@@ -23,7 +23,7 @@ LIBS_clips_active_diagnosis = m fawkescore fawkesutils fawkesaspects fawkesbasea
                           fawkesblackboard fawkesinterface fawkesclipsaspect \
                           fawkesrobotmemory
 OBJS_clips_active_diagnosis = clips_active_diagnosis_plugin.o clips_active_diagnosis_thread.o \
-												 clips_diagnosis_env.o \
+												 clips_diagnosis_env.o clips_common_env.o\
 
 OBJS_all    = $(OBJS_clips_active_diagnosis)
 PLUGINS_all = $(PLUGINDIR)/clips-active-diagnosis.$(SOEXT)
