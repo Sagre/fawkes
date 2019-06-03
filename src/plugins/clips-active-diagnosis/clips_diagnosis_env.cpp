@@ -89,7 +89,7 @@ ClipsDiagnosisEnvThread::init()
 			                f.c_str());
 	  }
   }
-
+	clips->use_fact_duplication(false);
 	clips->assert_fact("(active-diagnosis-init)");
 	clips->refresh_agenda();
 	clips->run();
@@ -192,7 +192,7 @@ ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
 	CLIPS::Template::pointer wm_fact = clips->get_template("wm-fact");
 	if (wm_fact) {
 		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,wm_fact);
-		tmp->set_slot("id",CLIPS::Value(std::string("\"" + id + "\""),CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("id",CLIPS::Value(id,CLIPS::TYPE_STRING));
 		tmp->set_slot("key",CLIPS::Values());
 		tmp->set_slot("type", CLIPS::Value("BOOL",CLIPS::TYPE_SYMBOL));
 		tmp->set_slot("is-list", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
@@ -212,23 +212,6 @@ ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
 	}
 }
 
-std::string
-ClipsDiagnosisEnvThread::fact_to_string(CLIPS::Fact::pointer fact)
-{
-  CLIPS::Template::pointer tmpl = fact->get_template();
-  std::string ret = "(";
-  ret += tmpl->name();
-  for (std::string slot : tmpl->slot_names()) {
-    ret += " (" + slot;
-    for (CLIPS::Value val : fact->slot_value(slot)) {
-      ret += " " + clips_value_to_string(val);
-    }
-    ret += ")";
-  }
-  ret += ")";
-  return ret;
-}
-
 std::vector<std::string>
 ClipsDiagnosisEnvThread::get_fact_strings()
 {
@@ -239,11 +222,54 @@ ClipsDiagnosisEnvThread::get_fact_strings()
 	while (fact_ptr) {
 		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
 		if (tmpl->name() == "wm-fact") {
-			ret.push_back(fact_to_string(fact_ptr));
+			ret.push_back(wm_fact_to_string(fact_ptr));
 		}
 		fact_ptr = fact_ptr->next();
 	}
 	return ret;
+}
+
+bool
+ClipsDiagnosisEnvThread::vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact){
+	CLIPS::Values vals = fact->slot_value("key");
+	if (vec.size() != vals.size()) return false;
+	for (size_t i = 0; i < vals.size(); ++i)
+	{
+		if (vals[i].as_string() != vec[i]) return false;
+	}
+	return true;
+}
+
+bool
+ClipsDiagnosisEnvThread::valid_measurement_result(std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
+{
+//	MutexLocker lock(clips.objmutex_ptr());
+
+	std::vector<std::string> key_list = {"domain","fact"};
+	key_list.push_back(predicate);
+	key_list.push_back("args?");
+
+	if (param_names.size() != param_values.size()) {
+		logger->log_error(name(),"Invalid param-names and param values of %s",predicate.c_str());
+		return false;
+	}
+
+	for (size_t i = 0; i < param_names.size(); ++i)
+	{
+		key_list.push_back(param_names[i].as_string());
+		key_list.push_back(param_values[i].as_string());
+	}
+
+	CLIPS::Fact::pointer fact_ptr = clips->get_facts();
+	while(fact_ptr)
+	{
+		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
+		if (tmpl->name() == "wm-fact") {
+			if (vector_equal_to_wm_fact(key_list,fact_ptr)) return true;
+		}
+		fact_ptr = fact_ptr->next();
+	}
+	return false;
 }
 
 void
@@ -285,8 +311,17 @@ ClipsDiagnosisEnvThread::loop()
 	clips->run();
 }
 
-std::string
-ClipsDiagnosisEnvThread::clips_value_to_string(CLIPS::Value val)
+std::string wm_fact_to_string(CLIPS::Fact::pointer fact)
+{
+  CLIPS::Template::pointer tmpl = fact->get_template();
+  std::string ret;
+    for (CLIPS::Value val : fact->slot_value("key")) {
+      ret += " " + clips_value_to_string(val);
+    }
+  return ret;
+}
+
+std::string clips_value_to_string(CLIPS::Value val)
 {
   switch (val.type()){
     case CLIPS::TYPE_STRING:

@@ -69,8 +69,8 @@ ClipsActiveDiagnosisThread::clips_context_init(const std::string &env_name,
   clips->add_function("active-diagnosis-set-up", sigc::slot<CLIPS::Value, std::string>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::set_up_active_diagnosis)));
   clips->add_function("active-diagnosis-final", sigc::slot<CLIPS::Value>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::finalize_diagnosis)));
   clips->add_function("active-diagnosis-delete", sigc::slot<void>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::delete_diagnosis)));
-  clips->add_function("active-diagnosis-integrate-measurement", sigc::slot<CLIPS::Value,std::string, std::string>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::integrate_measurement)));
-  clips->add_function("active-diagnosis-get-sensing-action", sigc::slot<CLIPS::Value>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::get_sensing_action)));
+  clips->add_function("active-diagnosis-integrate-measurement", sigc::slot<CLIPS::Value,int, std::string, CLIPS::Values, CLIPS::Values>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::integrate_measurement)));
+  clips->add_function("active-diagnosis-update-common-knowledge", sigc::slot<CLIPS::Value>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::update_common_knowledge)));
   clips.unlock();
 }
 
@@ -220,18 +220,21 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
     return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
   }
   logger->log_info(name(),"Finished getting hypothesis ids");
+  int count = 0;
   for (float hypo_id : hypothesis_ids) {
+
     try {
+      count++;
+      //if (count != 1 && count != (int)hypothesis_ids.size()) continue;
       auto env_thread_ptr = std::make_shared<ClipsDiagnosisEnvThread>(diag_id,hypo_id);
       diag_envs_.push_back(env_thread_ptr);
       thread_collector->add(&(*env_thread_ptr));
+
     } catch (fawkes::CannotInitializeThreadException &e) {
       logger->log_error(name(),"Cannot start diagnosis environment: %s",e.what());
       return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
     }
   }
-  common_env_ = std::make_shared<ClipsCommonEnvThread>();
-  thread_collector->add(&(*common_env_));
 
   logger->log_info(name(),"Finished starting diagnosis environments");
   std::string plan_id = get_plan_id_from_diag_id(diag_id);
@@ -295,72 +298,115 @@ ClipsActiveDiagnosisThread::delete_diagnosis()
   }
   diag_envs_.clear();
 
-  common_env_->wait_loop_done();
-  thread_collector->remove(&*common_env_);
-
 }
 
 /*
   Integrates a sensor measurement by removing all diagnosis hypothesis that are contradicted by the measurement
 */
 CLIPS::Value
-ClipsActiveDiagnosisThread::integrate_measurement(std::string fact, std::string value)
+ClipsActiveDiagnosisThread::integrate_measurement(int pos, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
 {
+  std::string fact_string;
+  std::vector<std::shared_ptr<ClipsDiagnosisEnvThread>>::iterator it = diag_envs_.begin();
+  while(it != diag_envs_.end())
+  {
+    if ((*it)->valid_measurement_result(predicate,param_names,param_values) != pos){
+      logger->log_error(name(),"Removing: %f - %s",(*it)->get_hypothesis_id(),(*it)->get_diag_id().c_str());
+      (*it)->wait_loop_done();
+      thread_collector->remove(&*(*it));
+      it = diag_envs_.erase(it);
+      //it++;
+    } else {
+      it++;
+    }
+  }
+  logger->log_info(name(),"Still %d hypothesis left after integrating knowledge about %s",(int)diag_envs_.size(),predicate.c_str());
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
+}
+
+CLIPS::Value
+ClipsActiveDiagnosisThread::update_common_knowledge()
+{
+  auto clips = envs_["executive"];
+  fact_occurences_.clear();
+  for (auto diag_env : diag_envs_) {
+    std::vector<std::string> diag_facts = diag_env->get_fact_strings();
+    for (std::string fact_string : diag_facts) {
+      if (fact_occurences_.find(fact_string) == fact_occurences_.end()) {
+        fact_occurences_[fact_string] = 1;
+      } else {
+        fact_occurences_[fact_string]++;
+      }
+    }
+  }
+  logger->log_info(name(),"Start matching fact bases");
+  CLIPS::Fact::pointer cx_fact_ptr = clips->get_facts();
+  while (cx_fact_ptr)
+  {   
+    if (cx_fact_ptr->get_template()->name() == "wm-fact")
+    {
+      std::string cx_fact_string = wm_fact_to_string(cx_fact_ptr);
+      if (fact_occurences_.find(cx_fact_string) != fact_occurences_.end() &&
+          fact_occurences_[cx_fact_string] != (int)diag_envs_.size())
+      {
+        logger->log_error(name(),"Retract: %s",cx_fact_string.c_str());
+        CLIPS::Fact::pointer tmp(cx_fact_ptr->next());
+        cx_fact_ptr->retract();
+        cx_fact_ptr = tmp;
+      } else {
+        cx_fact_ptr = cx_fact_ptr->next();
+      }
+    } else {
+      cx_fact_ptr = cx_fact_ptr->next();
+    }
+    
+  }
+
+  std::map<std::string,int>::iterator it = fact_occurences_.begin();
+  for (;it != fact_occurences_.end(); it++)
+  {
+    if (it->second == (int)diag_envs_.size())
+    {
+      //logger->log_error(name(),"Assert: %s",it->first.c_str());
+      CLIPS::Template::pointer wm_fact = clips->get_template("wm-fact");
+	    if (wm_fact) {
+		    CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,wm_fact);
+        CLIPS::Values key_values;
+        std::vector<std::string> key_string_splitted = str_split(it->first," ");
+
+        for (auto key_value : key_string_splitted) {
+          key_values.push_back(CLIPS::Value(key_value,CLIPS::TYPE_SYMBOL));
+        }
+
+	    	tmp->set_slot("id",CLIPS::Value("",CLIPS::TYPE_STRING));
+		    tmp->set_slot("key",key_values);
+		    tmp->set_slot("type", CLIPS::Value("BOOL",CLIPS::TYPE_SYMBOL));
+	    	tmp->set_slot("is-list", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
+	    	tmp->set_slot("value", CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+        tmp->set_slot("values",CLIPS::Values());
+
+        try{
+		    	auto ret = clips->assert_fact(tmp);
+		    	if (!ret) {
+		    		logger->log_error(name(),"Failed to assert fact");
+		    	} 
+	    	} catch ( ... ) {
+	    		logger->log_error(name(),"Failed to assert fact: Exception");
+	    	}
+    	} else {
+    		logger->log_error(name(),"Cant find wm-fact template");
+    	}
+    }
+  }
+  logger->log_info(name(),"Updating done");
+  return CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL);
 }
 
 /*
   Selects the next action according to the current state of each diagnosis environment
 */
 CLIPS::Value
-ClipsActiveDiagnosisThread::get_sensing_action() 
+ClipsActiveDiagnosisThread::get_sensing_action_gain() 
 {
-  std::map<std::string,int> fact_occurences;
-
-  for (auto diag_env : diag_envs_) {
-    std::vector<std::string> diag_facts = diag_env->get_fact_strings();
-    for (std::string fact_string : diag_facts) {
-      if (fact_occurences.find(fact_string) == fact_occurences.end()) {
-        fact_occurences[fact_string] = 1;
-      } else {
-        fact_occurences[fact_string]++;
-      }
-    }
-  }
-
-  std::map<std::string,int>::iterator it = fact_occurences.begin();
-  for (;it != fact_occurences.end(); it++)
-  {
-    if (it->second != (int)diag_envs_.size()) {
-logger->log_info(name(),"%s \t\t\t %d",it->first.c_str(),it->second);
-    } else {
-      common_env_->add_wm_fact(it->first);
-    }
-    
-  }
   return CLIPS::Value("test-action");
-}
-
-std::string
-ClipsActiveDiagnosisThread::clips_value_to_string(CLIPS::Value val)
-{
-  switch (val.type()){
-    case CLIPS::TYPE_STRING:
-      return val.as_string();
-      break;
-    case CLIPS::TYPE_SYMBOL:
-      return val.as_string();
-      break;
-    case CLIPS::TYPE_INSTANCE_NAME:
-      return val.as_string(); 
-      break;
-    case CLIPS::TYPE_FLOAT:
-      return std::to_string(val.as_float());
-      break;
-    case CLIPS::TYPE_INTEGER:
-      return std::to_string(val.as_float());
-      break;
-    default:
-      return "";
-  }
 }

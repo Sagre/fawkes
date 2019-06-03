@@ -32,7 +32,6 @@
 #include <aspect/thread_producer.h>
 #include <plugins/robot-memory/aspect/robot_memory_aspect.h>
 #include "clips_diagnosis_env.h"
-#include "clips_common_env.h"
 
 #include <string>
 #include <future>
@@ -71,20 +70,19 @@ class ClipsActiveDiagnosisThread
   CLIPS::Value set_up_active_diagnosis(std::string diag_id);
   CLIPS::Value finalize_diagnosis();
   void delete_diagnosis();
-  CLIPS::Value integrate_measurement(std::string fact, std::string value);
-  CLIPS::Value get_sensing_action();
+  CLIPS::Value integrate_measurement(int pos, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
+  CLIPS::Value update_common_knowledge();
+  CLIPS::Value get_sensing_action_gain();
   
-  std::string fact_to_string(CLIPS::Fact::pointer fact);
-  std::string clips_value_to_string(CLIPS::Value val);
 
   /** Stub to see name in backtrace for easier debugging. @see Thread::run() */
   protected: virtual void run() { Thread::run(); }
 
  private:
   std::map<std::string, fawkes::LockPtr<CLIPS::Environment> >  envs_;
-  std::shared_ptr<ClipsCommonEnvThread> common_env_;
   std::vector<std::shared_ptr<ClipsDiagnosisEnvThread>> diag_envs_;
 
+  std::map<std::string,int> fact_occurences_;
 
  private:
  

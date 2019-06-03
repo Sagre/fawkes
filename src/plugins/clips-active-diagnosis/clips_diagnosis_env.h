@@ -59,14 +59,15 @@ class ClipsDiagnosisEnvThread
 	std::string get_diag_id() {
 		return diag_id_;
 	}
-	std::string fact_to_string(CLIPS::Fact::pointer fact);
-	std::string clips_value_to_string(CLIPS::Value val);
 	std::vector<std::string> get_fact_strings();
 
 	bool clips_init_finished();
 	void setup_finished();
 	void add_wm_fact(std::string id);
 	void add_plan_action(CLIPS::Fact::pointer pa_fact);
+
+	bool vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact);
+	bool valid_measurement_result(std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
 
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */
  protected: virtual void run() { Thread::run(); }
@@ -76,4 +77,6 @@ class ClipsDiagnosisEnvThread
 	float hypothesis_id_;
 };
 
+std::string wm_fact_to_string(CLIPS::Fact::pointer fact);
+std::string clips_value_to_string(CLIPS::Value val);
 #endif
