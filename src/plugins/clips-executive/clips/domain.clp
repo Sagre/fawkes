@@ -103,6 +103,17 @@
   (slot exogenous (type SYMBOL) (allowed-values TRUE FALSE) (default FALSE))
 )
 
+(deftemplate domain-sensing-action
+  "Defines an operator as sensing action. A successful executed sensing action
+   results in the assertion or retraction of the grounded sensed predicate"
+   (slot operator (type SYMBOL))
+   (multislot param-names (type SYMBOL))
+   (multislot param-values)
+   (slot sensed-predicate (type SYMBOL))
+   (multislot sensed-param-names (type SYMBOL))
+   (multislot sensed-constants)
+)
+
 (deftemplate domain-operator-parameter
   "A parameter of an operator. The operator and type slots must refer to the
    names of an existing operator and an existing type respectively."
@@ -173,7 +184,7 @@
     (default POSITIVE))
 )
 
-(deftemplate domain-action-const
+(deftemplate domain-action-cost
   "Cost of an action"
   (slot part-of (type SYMBOL))
   (slot cost-name (type SYMBOL))
