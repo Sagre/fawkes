@@ -114,6 +114,13 @@
    (multislot sensed-constants)
 )
 
+(deftemplate domain-sensing-action-results
+  (slot plan-id (type SYMBOL))
+  (slot goal-id (type SYMBOL))
+  (slot plan-action-id (type INTEGER))
+  (slot fact-id (type SYMBOL))
+)
+
 (deftemplate domain-operator-parameter
   "A parameter of an operator. The operator and type slots must refer to the
    names of an existing operator and an existing type respectively."

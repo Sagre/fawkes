@@ -1,3 +1,8 @@
+(deftemplate diag-plan-information-gain
+    (slot plan-id (type SYMBOL))
+    (slot gain (type FLOAT))
+)
+
 (defrule diag-goal-start-active-diagnosis 
     ?d <- (diagnosis (id ?diag-id) (mode DIAGNOSIS-CREATED))
     (not (goal (class ACTIVE-DIAGNOSIS) (params ?diag-id)))
@@ -19,29 +24,72 @@
 (defrule diag-goal-select-diagnosis-goal
     ?g <- (goal (class ACTIVE-DIAGNOSIS) (mode FORMULATED) (parent nil))
     =>
+    (bind ?action (active-diagnosis-update-common-knowledge))
     (printout t "Selected Diagnosis Main Goal" crlf)
     (modify ?g (mode SELECTED))
 )
 
 (defrule diag-goal-expand-diagnosis-goal
+    (declare (salience ?*SALIENCE-LOW*))
     ?g <- (goal (class ACTIVE-DIAGNOSIS) (id ?id) (mode SELECTED) (parent nil))
+    (plan (id ?plan-id) (goal-id ?id))
     =>
-    (bind ?action (active-diagnosis-get-sensing-action))
-    (printout t "Create first sensing subgoal: " ?action crlf)
-    ; TODO: Get action name and param
-    (assert 
-        (goal (id (sym-cat ACTIVE-DIAGNOSIS-SENSE- (gensym*)))
-                (class ACTIVE-DIAGNOSIS-SENSE)
-                (parent ?id)
-                (type ACHIEVE)
-                (mode FORMULATED)
-                (params ?action))
+    (modify ?g (mode EXPANDED) (committed-to ?id))
+    (do-for-all-facts ((?p plan)) (eq ?p:goal-id ?id)
+        (bind ?sensed-predicate (create$ ))
+        (do-for-fact ((?pa plan-action)) (and (eq ?pa:plan-id ?p:id) (eq ?pa:executable TRUE))
+            (do-for-fact ((?dsa domain-sensing-action)) (eq ?dsa:operator ?pa:action-name)
+                (bind ?sensed-predicate (create$ ?sensed-predicate ?dsa:sensed-predicate))
+                (foreach ?pn ?dsa:sensed-param-names
+                    (bind ?param-index (member$ ?pn ?pa:param-names))
+                    (if ?param-index then
+                        (bind ?sensed-predicate (create$ ?sensed-predicate ?pn (nth$ ?param-index ?pa:param-values)))
+                    else
+                        (bind ?param-index (member$ ?pn ?dsa:sensed-param-names))
+                        (bind ?const (nth$ ?param-index ?dsa:sensed-constants))
+                        (if (neq ?const nil) then
+                            (bind ?sensed-predicate (create$ ?sensed-predicate ?pn ?const))
+                        else
+                            (printout error "Predicate param name " ?pn " is not set by grounded action and not a constant" crlf)
+                        )
+                    )
+                )
+                (assert 
+                    (diag-plan-information-gain (plan-id ?p:id) (gain (active-diagnosis-information-gain (implode$ ?sensed-predicate))))
+                )
+            )
+        )
+
     )
-    (modify ?g (mode EXPANDED))
+    (printout t "done" crlf)
+)
+
+
+(defrule diag-goal-commit-to-plan
+    ?g <- (goal (id ?id) (class ACTIVE-DIAGNOSIS) (mode EXPANDED))
+    (plan (id ?plan-id) (goal-id ?id))
+    (diag-plan-information-gain (plan-id ?plan-id) (gain ?gain))
+    (not (diag-plan-information-gain (gain ?g2&:(> ?g2 ?gain))))
+    =>
+    (modify ?g (mode COMMITTED) (committed-to ?plan-id))
+    (do-for-all-facts ((?p plan)) (and (eq ?p:goal-id ?id) (neq ?p:id ?plan-id))
+        (do-for-all-facts ((?pa plan-action)) (eq ?pa:plan-id ?p:id)
+            (retract ?pa)
+        )
+        (do-for-all-facts ((?dpa diag-plan-information-gain)) (eq ?dpa:plan-id ?p:id)
+            (retract ?dpa)
+        )
+        (retract ?p)
+    )
+)
+
+(defrule diag-goal-dispatch
+    ?g <- (goal (class ACTIVE-DIAGNOSIS) (mode COMMITTED))
+    =>
+    (modify ?g (mode DISPATCHED))
 )
 
 (defrule diag-goal-evaluate-subgoal
-    (goal (id ?parent-id) (class ACTIVE-DIAGNOSIS) (params ?diag-id))
     ?sg <- (goal (id ?id) (class ACTIVE-DIAGNOSIS-SENSE) (parent ?parent-id&~nil)
                 (mode FINISHED)
                 (outcome ?outcome))
