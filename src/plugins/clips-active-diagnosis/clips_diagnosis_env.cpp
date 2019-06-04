@@ -243,7 +243,8 @@ ClipsDiagnosisEnvThread::vector_equal_to_wm_fact(std::vector<std::string> vec, C
 bool
 ClipsDiagnosisEnvThread::valid_measurement_result(std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
 {
-//	MutexLocker lock(clips.objmutex_ptr());
+//
+	MutexLocker lock(clips.objmutex_ptr());
 
 	std::vector<std::string> key_list = {"domain","fact"};
 	key_list.push_back(predicate);
@@ -314,10 +315,11 @@ ClipsDiagnosisEnvThread::loop()
 std::string wm_fact_to_string(CLIPS::Fact::pointer fact)
 {
   CLIPS::Template::pointer tmpl = fact->get_template();
-  std::string ret;
-    for (CLIPS::Value val : fact->slot_value("key")) {
-      ret += " " + clips_value_to_string(val);
-    }
+	CLIPS::Values values = fact->slot_value("key");
+	std::string ret = clips_value_to_string(values[0]);
+	for (size_t i = 1; i < values.size(); ++i){
+		ret += " " + clips_value_to_string(values[i]);
+	}
   return ret;
 }
 

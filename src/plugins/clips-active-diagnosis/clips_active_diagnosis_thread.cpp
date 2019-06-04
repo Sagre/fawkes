@@ -71,6 +71,7 @@ ClipsActiveDiagnosisThread::clips_context_init(const std::string &env_name,
   clips->add_function("active-diagnosis-delete", sigc::slot<void>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::delete_diagnosis)));
   clips->add_function("active-diagnosis-integrate-measurement", sigc::slot<CLIPS::Value,int, std::string, CLIPS::Values, CLIPS::Values>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::integrate_measurement)));
   clips->add_function("active-diagnosis-update-common-knowledge", sigc::slot<CLIPS::Value>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::update_common_knowledge)));
+  clips->add_function("active-diagnosis-information-gain", sigc::slot<CLIPS::Value, std::string>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::information_gain)));
   clips.unlock();
 }
 
@@ -299,6 +300,45 @@ ClipsActiveDiagnosisThread::delete_diagnosis()
   diag_envs_.clear();
 
 }
+
+/*
+* Returns information gain for a given predicate. Predicate string is expected to have the
+* format: predicate-name param-name param-value ....
+*/
+CLIPS::Value
+ClipsActiveDiagnosisThread::information_gain(std::string grounded_predicate)
+{
+  std::map<std::string,int>::iterator it = fact_occurences_.begin();
+  for(;it != fact_occurences_.end();it++)
+  {
+    logger->log_info(name(),"%s: %d",it->first.c_str(),it->second);
+  }
+
+  std::vector<std::string> pred_splitted = str_split(grounded_predicate, " ");
+  std::string fact_string = "domain fact";
+  fact_string += " " + pred_splitted[0] + " args?";
+
+  for (size_t i = 1; i < pred_splitted.size(); ++i)
+  {
+    fact_string += " " + pred_splitted[i];
+  }
+
+  logger->log_info(name(),"Check gain of %s, %s", fact_string.c_str(), grounded_predicate.c_str());
+
+  if (fact_occurences_.find(fact_string) == fact_occurences_.end()) {
+    logger->log_info(name(),"Not found: %s \n Not a predicate that the hyopthesises disagree on",fact_string.c_str());
+    return CLIPS::Value(0.0);
+  } else {
+    float valid = fact_occurences_[fact_string];
+    float total = (int)diag_envs_.size();
+    float entropy = -(1.0/log(2)) * ( (valid/total) * log((valid/total)) 
+                                      + ((total-valid)/total) * log((total-valid)/total) );
+    logger->log_info(name(),"Gain: %f",entropy);
+    return CLIPS::Value(entropy);
+  }
+  
+}
+
 
 /*
   Integrates a sensor measurement by removing all diagnosis hypothesis that are contradicted by the measurement
