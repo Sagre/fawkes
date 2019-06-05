@@ -73,7 +73,7 @@ class ClipsActiveDiagnosisThread
   CLIPS::Value integrate_measurement(int pos, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
   CLIPS::Value information_gain(std::string grounded_predicate);
   CLIPS::Value update_common_knowledge();
-  CLIPS::Value get_sensing_action_gain();
+
   
 
   /** Stub to see name in backtrace for easier debugging. @see Thread::run() */

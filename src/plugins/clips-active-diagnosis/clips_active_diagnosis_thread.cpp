@@ -283,6 +283,14 @@ CLIPS::Value
 ClipsActiveDiagnosisThread::finalize_diagnosis()
 {
   MutexLocker lock(envs_["executive"].objmutex_ptr());
+
+  std::map<std::string,int>::iterator it = fact_occurences_.begin();
+  for (;it != fact_occurences_.end();it++)
+  {
+    if (it->second < (int)diag_envs_.size()) {
+      return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+    }
+  }
   delete_diagnosis();
   return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
 }
@@ -308,12 +316,6 @@ ClipsActiveDiagnosisThread::delete_diagnosis()
 CLIPS::Value
 ClipsActiveDiagnosisThread::information_gain(std::string grounded_predicate)
 {
-  std::map<std::string,int>::iterator it = fact_occurences_.begin();
-  for(;it != fact_occurences_.end();it++)
-  {
-    logger->log_info(name(),"%s: %d",it->first.c_str(),it->second);
-  }
-
   std::vector<std::string> pred_splitted = str_split(grounded_predicate, " ");
   std::string fact_string = "domain fact";
   fact_string += " " + pred_splitted[0] + " args?";
@@ -440,13 +442,4 @@ ClipsActiveDiagnosisThread::update_common_knowledge()
   }
   logger->log_info(name(),"Updating done");
   return CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL);
-}
-
-/*
-  Selects the next action according to the current state of each diagnosis environment
-*/
-CLIPS::Value
-ClipsActiveDiagnosisThread::get_sensing_action_gain() 
-{
-  return CLIPS::Value("test-action");
 }
