@@ -1,6 +1,7 @@
 (deftemplate diagnosis-hypothesis
     (slot id (type SYMBOL))
     (slot state (type SYMBOL) (allowed-values INIT WM-FACTS-INIT ACTIONS-PROPAGATED FAILED))
+    (slot probability (type FLOAT) (default -1.0))
 )
 
 (deftemplate diagnosis-setup-stage
@@ -50,6 +51,21 @@
     )
     (printout t "Copy wm-facts for " ?id crlf)
     (modify ?dh (state WM-FACTS-INIT))
+)
+
+(defrule diagnosis-calculate-probability
+    ?dh <- (diagnosis-hypothesis (id ?id) (probability -1.0))
+    (diagnosis-setup-finished)
+    =>
+    (bind ?prob 1.0)
+    (do-for-all-facts ((?pa plan-action)) (eq ?pa:diag-id ?id)
+        (do-for-fact ((?wm wm-fact)) (and (wm-key-prefix ?wm:key (create$ hardware edge)) 
+                                          (eq ?pa:action-name (wm-key-arg ?wm:key trans))
+                                     )
+            (bind ?prob (* ?prob (string-to-field (str-cat (wm-key-arg ?wm:key prob)))))
+        )
+    )
+    (modify ?dh (probability ?prob))
 )
 
 (defrule diagnosis-execute-plan-actions

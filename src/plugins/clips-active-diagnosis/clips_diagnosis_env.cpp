@@ -199,6 +199,7 @@ ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(float hypo_id)
 		CLIPS::Fact::pointer fact = CLIPS::Fact::create(**clips,diag_hypothesis);
 		fact->set_slot("id",CLIPS::Value(std::to_string(hypo_id),CLIPS::TYPE_SYMBOL));
 		fact->set_slot("state",CLIPS::Value("INIT",CLIPS::TYPE_SYMBOL));
+		fact->set_slot("probability",CLIPS::Value(-1.0));
 		try{
 			auto ret = clips->assert_fact(fact);
 			if (!ret) {
