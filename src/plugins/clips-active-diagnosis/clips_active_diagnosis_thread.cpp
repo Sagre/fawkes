@@ -93,7 +93,7 @@ ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_i
   }
 
   BSONObjBuilder query_b;
-  query_b << "_id" << BSONRegEx("^/domain/fact");
+  query_b << "_id" << BSONRegEx("^/");
 
   BSONObj q = query_b.done();
   try{

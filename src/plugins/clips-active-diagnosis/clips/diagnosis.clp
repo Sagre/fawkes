@@ -45,7 +45,7 @@
 (defrule diagnosis-copy-wm-facts
     ?dh <- (diagnosis-hypothesis (id ?id) (state INIT))
     =>
-    (do-for-all-facts ((?wm wm-fact)) (eq ?wm:env DEFAULT)
+    (do-for-all-facts ((?wm wm-fact)) (and (wm-key-prefix ?wm:key (create$ domain fact)) (eq ?wm:env DEFAULT))
         (duplicate ?wm (env ?id))
     )
     (printout t "Copy wm-facts for " ?id crlf)
