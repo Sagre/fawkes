@@ -36,12 +36,11 @@ using namespace mongo;
  */
 
 /** Constructor. */
-ClipsDiagnosisEnvThread::ClipsDiagnosisEnvThread(std::string diag_id,float hypothesis_id)
+ClipsDiagnosisEnvThread::ClipsDiagnosisEnvThread(std::string diag_id)
 	: Thread("ClipsDiagnosisEnvThread", Thread::OPMODE_CONTINUOUS),
-	  CLIPSAspect(std::string(diag_id + "-" + std::to_string(hypothesis_id)).c_str(), std::string("CLIPS (" + diag_id + "-" + std::to_string(hypothesis_id) + ")").c_str())
+	  CLIPSAspect(std::string(diag_id).c_str(), std::string("CLIPS (" + diag_id + ")").c_str())
 {
     diag_id_ = diag_id;
-		hypothesis_id_ = hypothesis_id;
 }
 
 /** Destructor. */
@@ -113,7 +112,7 @@ ClipsDiagnosisEnvThread::init()
 }
 
 void
-ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
+ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float diag_id)
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
@@ -122,6 +121,10 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
 		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,plan_action);
 		for (std::string slot : tmp->slot_names()) {
 			if (pa_fact->slot_value(slot).empty()) {
+				if (slot == "diag-id") {
+					tmp->set_slot(slot,CLIPS::Value(std::to_string(diag_id),CLIPS::TYPE_SYMBOL));
+					continue;
+				}
 				if (plan_action->slot_default_type(slot) == CLIPS::DefaultType::NO_DEFAULT) {
 					logger->log_error(name(),"Slot %s of plan action is missing a value. This will lead to undefined behaviour of this environment",slot.c_str());
 					return;
@@ -140,6 +143,7 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact)
 					
 			}
 		}
+	
 
 		if (!clips->assert_fact(tmp)){
 			logger->log_error(name(),"Failed to assert plan-action %s",tmp->slot_value("action-name")[0].as_string().c_str());
@@ -160,7 +164,7 @@ ClipsDiagnosisEnvThread::clips_init_finished()
 			CLIPS::Template::pointer tmpl = fact->get_template();
 			if (tmpl->name() == "diagnosis-setup-stage") {
 				CLIPS::Values v = fact->slot_value("state");
-				if (v.size() > 0 && v[0].as_string() == "HISTORY-PROPAGATED") {
+				if (v.size() > 0 && (v[0].as_string() == "HISTORY-PROPAGATED" || v[0].as_string() == "FAILED")) {
 					return true;
 				}
 			}
@@ -180,14 +184,42 @@ ClipsDiagnosisEnvThread::setup_finished()
 	clips->assert_fact("(diagnosis-setup-finished)");
 }
 
-//TODO: Cleanup
 void
-ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
+ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(float hypo_id) 
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
 	if (!clips){
-		logger->log_error(name(),"Clips pointer invalid");
+		logger->log_error(name(),"Clips Pointer invalid");
+		return;
+	}
+
+	CLIPS::Template::pointer diag_hypothesis = clips->get_template("diagnosis-hypothesis");
+	if (diag_hypothesis) {
+		CLIPS::Fact::pointer fact = CLIPS::Fact::create(**clips,diag_hypothesis);
+		fact->set_slot("id",CLIPS::Value(std::to_string(hypo_id),CLIPS::TYPE_SYMBOL));
+		fact->set_slot("state",CLIPS::Value("INIT",CLIPS::TYPE_SYMBOL));
+		try{
+			auto ret = clips->assert_fact(fact);
+			if (!ret) {
+				logger->log_error(name(),"Failed to assert fact");
+			} 
+		} catch ( ... ) {
+				logger->log_error(name(),"Failed to assert fact: Exception");
+		}
+	} else {
+		logger->log_error(name(),"Unable to find template diagnosis-hypothesis");
+	}
+	
+}
+
+void
+ClipsDiagnosisEnvThread::add_wm_fact_from_id(bool pos, std::string id)
+{
+	MutexLocker lock(clips.objmutex_ptr());
+
+	if (!clips){
+		return logger->log_error(name(),"Clips pointer invalid");
 	}
 	CLIPS::Template::pointer wm_fact = clips->get_template("wm-fact");
 	if (wm_fact) {
@@ -196,8 +228,14 @@ ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
 		tmp->set_slot("key",CLIPS::Values());
 		tmp->set_slot("type", CLIPS::Value("BOOL",CLIPS::TYPE_SYMBOL));
 		tmp->set_slot("is-list", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
-		tmp->set_slot("value", CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+		if(pos) {
+			tmp->set_slot("value", CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+		} else {
+			tmp->set_slot("value", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
+		}
+
 		tmp->set_slot("values",CLIPS::Values());
+		tmp->set_slot("env",CLIPS::Value("DEFAULT",CLIPS::TYPE_SYMBOL));
 
 		try{
 			auto ret = clips->assert_fact(tmp);
@@ -212,43 +250,67 @@ ClipsDiagnosisEnvThread::add_wm_fact(std::string id)
 	}
 }
 
-std::vector<std::string>
+void
+ClipsDiagnosisEnvThread::add_sensing_result_from_key(bool pos, std::string predicate, std::vector<std::string> key_args)
+{
+	MutexLocker lock(clips.objmutex_ptr());
+
+	if (!clips){
+		logger->log_error(name(),"Clips pointer invalid");
+	}
+	CLIPS::Template::pointer sens_result = clips->get_template("diagnosis-sensing-result");
+	if (sens_result) {
+		CLIPS::Values clips_key_args;
+		for (std::string key_arg: key_args) {
+			clips_key_args.push_back(CLIPS::Value(key_arg,CLIPS::TYPE_SYMBOL));
+		}
+
+		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,sens_result);
+		tmp->set_slot("predicate",CLIPS::Value(predicate,CLIPS::TYPE_SYMBOL));
+		tmp->set_slot("args",clips_key_args);
+		if (pos) {
+			tmp->set_slot("value", CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+		} else {
+			tmp->set_slot("value", CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
+		}
+
+		try{
+			auto ret = clips->assert_fact(tmp);
+			if (!ret) {
+				logger->log_error(name(),"Failed to assert fact");
+			} 
+		} catch ( ... ) {
+			logger->log_error(name(),"Failed to assert fact: Exception");
+		}
+	} else {
+		logger->log_error(name(),"Cant find diagnosis-sensing-result template");
+	}
+}
+
+std::vector<std::pair<std::string,std::string>>
 ClipsDiagnosisEnvThread::get_fact_strings()
 {
 	MutexLocker lock(clips.objmutex_ptr());
-	std::vector<std::string> ret;
+	std::vector<std::pair<std::string,std::string>> ret;
 	
 	CLIPS::Fact::pointer fact_ptr = clips->get_facts();
 	while (fact_ptr) {
 		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
 		if (tmpl->name() == "wm-fact") {
-			ret.push_back(wm_fact_to_string(fact_ptr));
+			ret.push_back(std::make_pair(wm_fact_to_string(fact_ptr),fact_ptr->slot_value("env")[0].as_string()));
 		}
 		fact_ptr = fact_ptr->next();
 	}
 	return ret;
 }
 
-bool
-ClipsDiagnosisEnvThread::vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact){
-	CLIPS::Values vals = fact->slot_value("key");
-	if (vec.size() != vals.size()) return false;
-	for (size_t i = 0; i < vals.size(); ++i)
-	{
-		if (vals[i].as_string() != vec[i]) return false;
-	}
-	return true;
-}
-
-bool
-ClipsDiagnosisEnvThread::valid_measurement_result(std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
+int
+ClipsDiagnosisEnvThread::sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
 {
 //
 	MutexLocker lock(clips.objmutex_ptr());
 
-	std::vector<std::string> key_list = {"domain","fact"};
-	key_list.push_back(predicate);
-	key_list.push_back("args?");
+	std::vector<std::string> key_list;
 
 	if (param_names.size() != param_values.size()) {
 		logger->log_error(name(),"Invalid param-names and param values of %s",predicate.c_str());
@@ -261,16 +323,15 @@ ClipsDiagnosisEnvThread::valid_measurement_result(std::string predicate, CLIPS::
 		key_list.push_back(param_values[i].as_string());
 	}
 
-	CLIPS::Fact::pointer fact_ptr = clips->get_facts();
-	while(fact_ptr)
-	{
-		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
-		if (tmpl->name() == "wm-fact") {
-			if (vector_equal_to_wm_fact(key_list,fact_ptr)) return true;
-		}
-		fact_ptr = fact_ptr->next();
-	}
-	return false;
+	add_sensing_result_from_key(positive,predicate,key_list);
+
+	
+	clips->refresh_agenda();
+	clips->run();
+
+
+
+	return 2;
 }
 
 void
@@ -296,7 +357,7 @@ ClipsDiagnosisEnvThread::finalize()
 		logger->log_info(name(),slot_str.c_str());
 		ret = ret->next();
 	}*/
-	logger->log_info(name(),"Killed diagnosis environment: %s %f", diag_id_.c_str(),hypothesis_id_);
+	logger->log_info(name(),"Killed diagnosis environment: %s", diag_id_.c_str());
 	clips->clear();
 	clips->refresh_agenda();
 	clips->run();

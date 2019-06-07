@@ -105,6 +105,7 @@
 	; Use either slot depending on whether it's a single value or a list
 	(slot value)
 	(multislot values)
+	(slot env (type SYMBOL))
 )
 
 (deffunction wm-split-string-sym (?str ?sep)
@@ -356,8 +357,8 @@
 
 (defrule wm-key-conflict
 	(declare (salience ?*SALIENCE-HIGH*))
-	?w1 <- (wm-fact (id ?id1) (key $?key))
-	?w2 <- (wm-fact (id ?id2) (key $?key))
+	?w1 <- (wm-fact (env ?env) (id ?id1) (key $?key))
+	?w2 <- (wm-fact (env ?env) (id ?id2) (key $?key))
 	(test (neq ?w1 ?w2))
 	=>
 	(printout error "Two world model facts with the same key '" ?key '": "

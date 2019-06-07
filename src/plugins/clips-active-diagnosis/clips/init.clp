@@ -10,9 +10,9 @@
 (defglobal
   ?*CONFIG_PREFIX* = "/clips-active-diagnosis"
 	?*INIT-STAGES* = (create$ STAGE-1 STAGE-2 STAGE-3)
-	?*CX-STAGE2-FILES* = (create$ "plan.clp" "goal.clp" "domain.clp"
-	                              "worldmodel.clp" "cx-identity.clp"  "wm-domain-sync.clp"
-	                              "wm-config.clp" "diagnosis.clp")
+	?*CX-STAGE2-FILES* = (create$ "plan-action.clp"  "worldmodel.clp" "diagnosis.clp" "domain.clp" "saliences.clp"
+	                              "wm-domain-sync.clp"
+	                              "wm-config.clp" )
 	?*CX-USER-INIT-OFFSET* = 10
 )
 
@@ -32,10 +32,6 @@
 	(slot id (type SYMBOL))
 	(slot ok (type SYMBOL) (allowed-values TRUE FALSE))
 	(slot error-msg (type STRING))
-)
-
-(deftemplate diagnosis-setup-stage
-	(slot state (type SYMBOL) (allowed-values INIT DOMAIN-LOADED HISTORY-PROPAGATED))
 )
 
 (defrule active-diagnosis-load-config
@@ -153,8 +149,6 @@
 	(active-diagnosis-init)
   (confval (path "/clips-active-diagnosis/spec") (type STRING) (value ?spec))
 	=>
-	(assert (active-diagnosis-init-request (state PENDING)	(stage STAGE-1) (order 0)
-																	(name blackboard) (feature TRUE) (files "BATCH|blackboard-init.clp")))
 	(cx-assert-init-requests ?spec STAGE-1 TRUE)
 	(assert (active-diagnosis-init-request (state PENDING)	(stage STAGE-2) (order 0)
 																	(name cx-files) (feature FALSE) (files ?*CX-STAGE2-FILES*)))
@@ -209,7 +203,6 @@
 	?ir <- (active-diagnosis-init-request (state PENDING) (stage ?stage) (order ?order)
 																 (name ?name) (feature TRUE))
 	(not (active-diagnosis-init-request (state ~COMPLETED) (stage ?stage) (order ?order2&:(< ?order2 ?order))))
-	;(not (ff-feature ?name))
 	=>
 	(printout error "Init " ?stage ": feature " ?name " is not available" crlf)
 	(modify ?ir (state ERROR) (error-msgs (str-cat "Feature " ?name " is not available")))
@@ -233,7 +226,7 @@
 	=>
 	(if (> (length$ ?files) 0)
 	 then
-		(printout t "Init " ?stage ": loading files for " ?name " " ?files crlf)
+		;(printout t "Init " ?stage ": loading files for " ?name " " ?files crlf)
 		(foreach ?f ?files
 			(bind ?pipepos (str-index "|" ?f))
 			(bind ?file-op "LOAD")
@@ -253,7 +246,7 @@
 	then
 		(modify ?ir (state COMPLETED))
 	else
-		(printout t "Init " ?stage ": waiting for signal " ?wait-for " by " ?name crlf)
+		;(printout t "Init " ?stage ": waiting for signal " ?wait-for " by " ?name crlf)
 		(modify ?ir (state WAIT-FOR))
 	)
 )
@@ -266,7 +259,7 @@
 	?ws <- (active-diagnosis-init-signal (id ?wait-for) (ok TRUE))
 	=>
 	(retract ?ws)
-	(printout info "Init " ?stage ": signal " ?wait-for " by " ?name " received" crlf)
+	;(printout info "Init " ?stage ": signal " ?wait-for " by " ?name " received" crlf)
 	(modify ?ir (state COMPLETED))
 )
 
@@ -291,11 +284,10 @@
 	(if (< ?stage-idx (length$ ?*INIT-STAGES*))
 	 then
 		(bind ?next-stage (nth$ (+ ?stage-idx 1) ?*INIT-STAGES*))
-		(printout t "Init " ?stage ": finished, advancing to " ?next-stage crlf)
+		;(printout t "Init " ?stage ": finished, advancing to " ?next-stage crlf)
 		(assert (active-diagnosis-init-stage ?next-stage))
 	 else
 	 (printout t "Initialization completed" crlf)
 	 (assert (active-diagnosis-initialized))
 	)
-	(assert (diagnosis-setup-stage (state INIT)))
 )

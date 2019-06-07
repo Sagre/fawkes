@@ -46,35 +46,34 @@ class ClipsDiagnosisEnvThread
 	public fawkes::RobotMemoryAspect
 {
  public:
-	ClipsDiagnosisEnvThread(std::string diag_id,float hypothesis_id);
+	ClipsDiagnosisEnvThread(std::string diag_id);
 	virtual ~ClipsDiagnosisEnvThread();
 
 	virtual void init();
 	virtual void loop();
 	virtual void finalize();
 
-	float get_hypothesis_id() {
-		return hypothesis_id_;
-	}
 	std::string get_diag_id() {
 		return diag_id_;
 	}
-	std::vector<std::string> get_fact_strings();
+	std::vector<std::pair<std::string,std::string>> get_fact_strings();
 
 	bool clips_init_finished();
 	void setup_finished();
-	void add_wm_fact(std::string id);
-	void add_plan_action(CLIPS::Fact::pointer pa_fact);
+
+	void add_diagnosis_hypothesis(float hypo_id);
+	void add_wm_fact_from_id(bool pos, std::string id);
+	void add_sensing_result_from_key(bool pos, std::string predicate, std::vector<std::string> key_args);
+	void add_plan_action(CLIPS::Fact::pointer pa_fact,float diag_id);
 
 	bool vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact);
-	bool valid_measurement_result(std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
+	int sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
 
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */
  protected: virtual void run() { Thread::run(); }
 
  private:
     std::string diag_id_;
-	float hypothesis_id_;
 };
 
 std::string wm_fact_to_string(CLIPS::Fact::pointer fact);

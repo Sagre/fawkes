@@ -5,19 +5,10 @@
 ;  Copyright  2017  Till Hofmann <hofmann@kbsg.rwth-aachen.de>
 ;  Licensed under GPLv2+ license, cf. LICENSE file
 ;---------------------------------------------------------------------------
-(defrule domain-load
-  ?dss <- (diagnosis-setup-stage (state INIT))
-  =>
-  (parse-pddl-domain (path-resolve "rcll2018/domain.pddl"))
-  (assert (domain-loaded))
-  (modify ?dss (state DOMAIN-LOADED))
-  (printout t "Finished parsing pddl domain" crlf)
-)
-
-
 (deftemplate domain-object-type
   "A type in the domain. The type obj must be super-type of all types."
   (slot name (type SYMBOL))
+    (slot env (type SYMBOL) (default DEFAULT))
   (slot super-type (type SYMBOL) (default object))
 )
 
@@ -25,6 +16,7 @@
   "An object in the domain with the given name and type. The type must refer to
    the name of an existing type."
   (slot name)
+    (slot env (type SYMBOL))
   (slot type (type SYMBOL) (default object))
 )
 
@@ -49,6 +41,7 @@
    If a fact exists, it is considered to be true, false otherwise (closed world assumption)."
   (slot name (type SYMBOL) (default ?NONE))
   (multislot param-values)
+  (slot env (type SYMBOL))
 )
 
 (deffunction domain-wipe ()
@@ -89,8 +82,8 @@
 (deftemplate domain-pending-sensed-fact
   "An action effect of a sensed predicate that is still pending."
   (slot name (type SYMBOL) (default ?NONE))
-  (slot goal-id (type SYMBOL))
-  (slot plan-id (type SYMBOL))
+  (slot diag-id (type SYMBOL))
+  (slot env (type SYMBOL))
   ; TODO: Rename to action for consistency. Do this when we no longer need to
   ; stay compatible with lab course code.
   (slot action-id (type INTEGER))
@@ -129,10 +122,10 @@
    sub-conditions. The action is an optional ID of grounded action this
    precondition belongs to. Note that grounded should always be yes if the
    action is not nil."
+       (slot env (type SYMBOL))
   (slot operator (type SYMBOL))
   (slot part-of (type SYMBOL))
-  (slot goal-id (type SYMBOL))
-  (slot plan-id (type SYMBOL))
+  (slot diag-id (type SYMBOL))
   ; TODO: Rename to action for consistency. Do this when we no longer need to
   ; stay compatible with lab course code.
   (slot grounded-with (type INTEGER) (default 0))
@@ -151,10 +144,10 @@
    value of param-names will be ignored and should be set to c (for constant).
    See the tests for an example.
 "
+    (slot env (type SYMBOL))
   (slot operator (type SYMBOL))
   (slot part-of (type SYMBOL))
-  (slot goal-id (type SYMBOL))
-  (slot plan-id (type SYMBOL))
+  (slot diag-id (type SYMBOL))
   ; TODO: Rename to action for consistency. Do this when we no longer need to
   ; stay compatible with lab course code.
   (slot grounded-with (type INTEGER) (default 0))
@@ -366,19 +359,18 @@
   "Ground a non-atomic precondition. Grounding here merely means that we
    duplicate the precondition and tie it to one specific action-id."
   (declare (salience ?*SALIENCE-DOMAIN-GROUND*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
-  (plan-action (action-name ?op) (goal-id ?g) (plan-id ?p) (id ?action-id)
+  (diagnosis-hypothesis (id ?diag-id))
+  (plan-action (action-name ?op) (diag-id ?diag-id) (id ?action-id)
                (state FORMULATED|PENDING|WAITING))
   ?precond <- (domain-precondition
                 (name ?precond-name)
                 (part-of ?op)
                 (grounded FALSE))
-  (not (domain-precondition (name ?precond-name) (goal-id ?g) (plan-id ?p)
+  (not (domain-precondition (name ?precond-name) (diag-id ?diag-id) (env ?diag-id)
                             (grounded-with ?action-id) (grounded TRUE)))
 =>
   (duplicate ?precond
-    (goal-id ?g) (plan-id ?p) (grounded-with ?action-id)
+    (diag-id ?diag-id) (env ?diag-id) (grounded-with ?action-id)
     (grounded TRUE))
 )
 
@@ -386,19 +378,18 @@
   "Ground a non-atomic precondition. Grounding here merely means that we
    duplicate the precondition and tie it to one specific effect-id."
   (declare (salience ?*SALIENCE-DOMAIN-GROUND*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
-  (plan-action (action-name ?op) (id ?action-id) (goal-id ?g) (plan-id ?p)
+  (diagnosis-hypothesis (id ?diag-id))
+  (plan-action (action-name ?op) (id ?action-id) (diag-id ?diag-id)
     (state EXECUTION-SUCCEEDED))
   (domain-effect (name ?effect-name) (part-of ?op) (condition ?cond-name))
   ?precond <- (domain-precondition
                 (name ?precond-name)
                 (part-of ?cond-name)
                 (grounded FALSE))
-  (not (domain-precondition (name ?precond-name) (goal-id ?g) (plan-id ?p)
+  (not (domain-precondition (name ?precond-name) (diag-id ?diag-id) (env ?diag-id)
          (grounded-with ?action-id) (grounded TRUE)))
 =>
-  (duplicate ?precond (goal-id ?g) (plan-id ?p) (grounded-with ?action-id)
+  (duplicate ?precond (diag-id ?diag-id) (grounded-with ?action-id) (env ?diag-id)
     (grounded TRUE))
 )
 
@@ -406,40 +397,37 @@
   "Ground a non-atomic precondition that is part of another precondition. Copy
    the action ID from the parent precondition."
   (declare (salience ?*SALIENCE-DOMAIN-GROUND*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   ?precond <- (domain-precondition
                 (name ?precond-name)
                 (part-of ?parent)
                 (grounded FALSE))
-  (domain-precondition (name ?parent) (goal-id ?g) (plan-id ?p)
+  (domain-precondition (name ?parent) (diag-id ?diag-id) (env ?diag-id)
     (grounded-with ?action-id&~0))
   (not (domain-precondition
         (name ?precond-name)
-        (goal-id ?g)
-        (plan-id ?p)
+        (diag-id ?diag-id)
+        (env ?diag-id)
         (grounded-with ?action-id)
         (grounded TRUE)))
 =>
-  (duplicate ?precond (goal-id ?g) (plan-id ?p) (grounded-with ?action-id)
+  (duplicate ?precond (diag-id ?diag-id) (grounded-with ?action-id) (env ?diag-id)
     (grounded TRUE))
 )
 
 (defrule domain-ground-atomic-precondition
   "Ground an atomic precondition of an operator."
   (declare (salience ?*SALIENCE-DOMAIN-GROUND*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   (plan-action
     (action-name ?op)
-    (goal-id ?g)
-    (plan-id ?p)	
+    (diag-id ?diag-id)
     (param-names $?action-param-names)
     (id ?action-id)
     (param-values $?action-values& :
       (= (length$ ?action-values) (length$ ?action-param-names)))
   )
-  (domain-precondition (name ?parent) (goal-id ?g) (plan-id ?p)
+  (domain-precondition (name ?parent) (diag-id ?diag-id) (env ?diag-id)
     (grounded-with ?action-id&~0) (grounded TRUE))
   ?precond <- (domain-atomic-precondition
                 (part-of ?parent)
@@ -449,8 +437,8 @@
                 (grounded FALSE)
               )
   (not (domain-atomic-precondition
-        (goal-id ?g)
-        (plan-id ?p)
+        (diag-id ?diag-id)
+        (env ?diag-id)
         (grounded-with ?action-id)
         (name ?precond-name)
         (grounded TRUE)))
@@ -474,7 +462,7 @@
     )
   )
   (duplicate ?precond
-    (param-values ?values) (goal-id ?g) (plan-id ?p)
+    (param-values ?values) (diag-id ?diag-id) (env ?diag-id)
     (grounded-with ?action-id) (grounded TRUE))
 )
 
@@ -492,23 +480,24 @@
 
 (defrule domain-check-if-atomic-precondition-is-satisfied
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   ?precond <- (domain-atomic-precondition
-                (goal-id ?g) (plan-id ?p)
+                (diag-id ?diag-id)
                 (is-satisfied FALSE)
                 (predicate ?pred)
                 (equality FALSE)
                 (param-values $?params)
+                (env ?diag-id)
                 (grounded TRUE))
-  (domain-fact (name ?pred) (param-values $?params))
+  (domain-fact (env ?diag-id) (name ?pred) (param-values $?params))
 =>
   (modify ?precond (is-satisfied TRUE))
 )
 
 (defrule domain-check-if-atomic-equality-precondition-is-satisfied
   ?precond <- (domain-atomic-precondition
-                (goal-id ?g) (plan-id ?p)
+                (env ?diag-id)
+                (diag-id ?diag-id)
                 (is-satisfied ?is-sat)
                 (equality TRUE)
                 (param-values $?params& :
@@ -523,12 +512,13 @@
 (defrule domain-retract-atomic-precondition-if-not-satisfied
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
   ?precond <- (domain-atomic-precondition
-                (goal-id ?g) (plan-id ?p)
+                (diag-id ?diag-id)
                 (is-satisfied TRUE)
+                (env ?diag-id)
                 (predicate ?pred)
                 (param-values $?params)
                 (grounded TRUE))
-  (not (domain-fact (name ?pred) (param-values $?params)))
+  (not (domain-fact (env ?diag-id) (name ?pred) (param-values $?params)))
 =>
   (modify ?precond (is-satisfied FALSE))
 )
@@ -538,23 +528,22 @@
    Note that we need a second rule that retracts the fact if the child is
    asserted."
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   ?precond <- (domain-precondition
                 (type negation)
                 (grounded TRUE)
-                (goal-id ?g)
-                (plan-id ?p)
+                (diag-id ?diag-id)
+                (env ?diag-id)
                 (grounded-with ?action-id)
                 (name ?pn)
                 (is-satisfied FALSE))
   (or (domain-atomic-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (grounded-with ?action-id) (part-of ?pn)
         (grounded TRUE) (is-satisfied FALSE)
       )
       (domain-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (grounded-with ?action-id) (part-of ?pn)
         (grounded TRUE) (is-satisfied FALSE)
       )
@@ -567,23 +556,22 @@
   "If a negative precondition's child is satisfied, the precondition is not
    satisfied anymore."
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   ?precond <- (domain-precondition
                 (type negation)
+                (env ?diag-id)
                 (name ?pn)
-                (goal-id ?g)
-                (plan-id ?p)
+                (diag-id ?diag-id)
                 (grounded-with ?action-id)
                 (is-satisfied TRUE)
                 (grounded TRUE))
   (or (domain-atomic-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (grounded-with ?action-id) (part-of ?pn)
         (grounded TRUE) (is-satisfied TRUE)
       )
       (domain-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (grounded-with ?action-id) (part-of ?pn)
         (grounded TRUE) (is-satisfied TRUE)
       )
@@ -595,29 +583,28 @@
 (defrule domain-check-if-conjunctive-precondition-is-satisfied
   "All the precondition's children must be satisfied."
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   ?precond <- (domain-precondition
                 (name ?pn)
                 (part-of ?op)
                 (type conjunction)
-                (goal-id ?g)
-                (plan-id ?p)
+                (diag-id ?diag-id)
                 (grounded-with ?action-id)
+                (env ?diag-id)
                 (grounded TRUE)
                 (is-satisfied FALSE))
   (not (domain-atomic-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (part-of ?pn) (grounded TRUE)
         (grounded-with ?action-id) (is-satisfied FALSE)))
   (not (domain-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (part-of ?pn) (grounded TRUE)
         (grounded-with ?action-id) (is-satisfied FALSE)))
 
   ; ensure that we have grounded all related atomic preconditions before
   (forall (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded FALSE))
-    (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
+    (domain-atomic-precondition (operator ?op) (part-of ?pn) (env ?diag-id) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
   )
 =>
   (modify ?precond (is-satisfied TRUE))
@@ -627,24 +614,23 @@
   "Make sure that a conjunctive precondition is not satisfied if any of its
    children is satisfied."
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
+  (diagnosis-hypothesis (id ?diag-id))
   ?precond <- (domain-precondition
                 (name ?pn)
                 (part-of ?op)
                 (type conjunction)
-                (goal-id ?g)
-                (plan-id ?p)
+                (diag-id ?diag-id)
+                (env ?diag-id)
                 (grounded-with ?action-id)
                 (grounded TRUE)
                 (is-satisfied TRUE))
   (or (domain-atomic-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (part-of ?pn) (grounded TRUE)
         (grounded-with ?action-id) (is-satisfied FALSE)
       )
       (domain-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (part-of ?pn) (grounded TRUE)
         (grounded-with ?action-id) (is-satisfied FALSE)
       )
@@ -652,7 +638,7 @@
 
   ; ensure that we have grounded all related atomic preconditions before
   (forall (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded FALSE))
-    (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
+    (domain-atomic-precondition (operator ?op) (env ?diag-id) (part-of ?pn) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
   )
 =>
   (modify ?precond (is-satisfied FALSE))
@@ -665,24 +651,24 @@
                 (name ?pn)
                 (part-of ?op)
                 (type disjunction)
-                (goal-id ?g)
-                (plan-id ?p)
+                (diag-id ?diag-id)
+                (env ?diag-id)
                 (grounded-with ?action-id)
                 (grounded TRUE)
                 (is-satisfied FALSE))
   (or (domain-atomic-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diag-id)
         (part-of ?pn) (grounded TRUE)
         (grounded-with ?action-id) (is-satisfied TRUE))
       (domain-precondition
-        (goal-id ?g) (plan-id ?p)
+        (diag-id ?diag-id) (env ?diav-id)
         (part-of ?pn) (grounded TRUE)
         (grounded-with ?action-id) (is-satisfied TRUE))
   )
 
   ; ensure that we have grounded all related atomic preconditions before
   (forall (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded FALSE))
-    (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
+    (domain-atomic-precondition (operator ?op) (env ?diag-id) (part-of ?pn) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
   )
  =>
   (modify ?precond (is-satisfied TRUE))
@@ -695,18 +681,18 @@
                 (name ?pn)
                 (part-of ?op)
                 (type disjunction)
-                (goal-id ?g)
-                (plan-id ?p)
+                (diag-id ?diag-id)
+                (env ?diag-id)
                 (grounded-with ?action-id)
                 (grounded TRUE)
                 (is-satisfied TRUE))
   (not
     (or (domain-atomic-precondition
-          (goal-id ?g) (plan-id ?p)
+          (diag-id ?diag-id) (env ?diag-id)
           (part-of ?pn) (grounded TRUE)
           (grounded-with ?action-id) (is-satisfied TRUE))
         (domain-precondition
-          (goal-id ?g) (plan-id ?p)
+          (diag-id ?diag-id) (env ?diag-id)
           (part-of ?pn) (grounded TRUE)
           (grounded-with ?action-id) (is-satisfied TRUE))
     )
@@ -714,7 +700,7 @@
 
   ; ensure that we have grounded all related atomic preconditions before
   (forall (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded FALSE))
-    (domain-atomic-precondition (operator ?op) (part-of ?pn) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
+    (domain-atomic-precondition (operator ?op) (part-of ?pn) (env ?diag-id) (name ?apname) (grounded TRUE) (grounded-with ?action-id))
   )
 =>
   (modify ?precond (is-satisfied FALSE))
@@ -745,9 +731,8 @@
 (defrule domain-effects-check-for-sensed
   "Apply effects of an action after it succeeded."
   (declare (salience ?*SALIENCE-DOMAIN-APPLY*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
-  ?pa <- (plan-action	(id ?id) (goal-id ?g) (plan-id ?p) (action-name ?op)
+  (diagnosis-hypothesis (id ?diag-id))
+  ?pa <- (plan-action	(id ?id) (diag-id ?diag-id) (action-name ?op)
                       (state EXECUTION-SUCCEEDED)
 											(param-names $?action-param-names)
                       (param-values $?action-param-values))
@@ -760,14 +745,14 @@
 		(if (or (not (any-factp ((?cep domain-precondition)) (eq ?cep:part-of ?e:name)))
 						(any-factp ((?cep domain-precondition))
 											 (and (eq ?cep:part-of ?e:name) ?cep:is-satisfied
-                            (eq ?cep:goal-id ?g) (eq ?cep:plan-id ?p)
+                            (eq ?cep:diag-id ?diag-id) (eq ?cep:env ?diag-id)
                             ?cep:grounded (eq ?cep:grounded-with ?id))))
 		 then
 			(bind ?values
 						(domain-ground-effect ?e:param-names ?e:param-constants
 																	?action-param-names ?action-param-values))
 
-			(assert (domain-pending-sensed-fact (name ?pred:name) (action-id ?id) (goal-id ?g) (plan-id ?p)
+			(assert (domain-pending-sensed-fact (name ?pred:name) (action-id ?id) (env ?diag-id) (diag-id ?diag-id)
 																					(param-values ?values) (type ?e:type)))
 			(bind ?next-state SENSED-EFFECTS-WAIT)
 		)
@@ -788,9 +773,8 @@
 (defrule domain-effects-apply
   "Apply effects of an action after it succeeded."
   (declare (salience ?*SALIENCE-DOMAIN-APPLY*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
-  ?pa <- (plan-action	(id ?id) (goal-id ?g) (plan-id ?p) (action-name ?op)
+  (diagnosis-hypothesis (id ?diag-id))
+  ?pa <- (plan-action	(id ?id) (diag-id ?diag-id) (action-name ?op)
                       (state SENSED-EFFECTS-HOLD)
 											(param-names $?action-param-names)
                       (param-values $?action-param-values))
@@ -803,7 +787,7 @@
 		(if (or (not (any-factp ((?cep domain-precondition)) (eq ?cep:part-of ?e:condition)))
 						(any-factp ((?cep domain-precondition))
 											 (and (eq ?cep:part-of ?e:condition) ?cep:is-satisfied
-                            (eq ?cep:goal-id ?g) (eq ?cep:plan-id ?p)
+                            (eq ?cep:diag-id ?diag-id)
                             ?cep:grounded (eq ?cep:grounded-with ?id))))
 		 then
       ;(printout t "Apply Effect" crlf)
@@ -813,7 +797,7 @@
 
 			(if (eq ?e:type POSITIVE)
 			 then
-				(assert (domain-fact (name ?pred:name) (param-values ?values)))
+				(assert (domain-fact (env ?diag-id) (name ?pred:name) (param-values ?values)))
         ;(printout t "Effect: " ?pred:name " " ?values crlf)
 			 else
         ; Check if there is also a positive effect for the predicate with the
@@ -832,7 +816,7 @@
                   )))
         then
 				  (delayed-do-for-all-facts ((?df domain-fact))
-					  (and (eq ?df:name ?pred:name) (eq ?df:param-values ?values))
+					  (and (eq ?df:name ?pred:name) (eq ?df:param-values ?values) (eq ?df:env ?diag-id))
             ;(printout t "Effect: not " ?pred:name " " ?values crlf)
 					  (retract ?df)
           )
@@ -866,16 +850,16 @@
 (defrule domain-effect-wait-sensed-done
   "After the effects of an action have been applied, change it to SENSED-EFFECTS-HOLD."
   (declare (salience ?*SALIENCE-DOMAIN-APPLY*))
-  ?a <- (plan-action (id ?action-id) (state SENSED-EFFECTS-WAIT) (plan-id ?p) (goal-id ?g))
-  (not (domain-pending-sensed-fact (action-id ?action-id) (goal-id ?g) (plan-id ?p)))
+  ?a <- (plan-action (id ?action-id) (state SENSED-EFFECTS-WAIT) (diag-id ?diag-id))
+  (not (domain-pending-sensed-fact (action-id ?action-id) (diag-id ?diag-id)))
   =>
   (modify ?a (state SENSED-EFFECTS-HOLD))
 )
 
 (defrule domain-effect-sensed-remove-on-removed-action
   "Remove domain-pending-sensed-fact when the corresponding action was removed"
-  ?ef <- (domain-pending-sensed-fact (action-id ?action-id) (goal-id ?g) (plan-id ?p))
-  (not (plan-action (id ?action-id) (plan-id ?p) (goal-id ?g)))
+  ?ef <- (domain-pending-sensed-fact (action-id ?action-id) (diag-id ?diag-id))
+  (not (plan-action (id ?action-id) (diag-id ?diag-id)))
   =>
   (retract ?ef)
 )
@@ -906,11 +890,10 @@
 (defrule domain-check-if-action-is-executable
   "If the precondition of an action is satisfied, the action is executable."
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
-  ?action <- (plan-action (id ?action-id) (goal-id ?g) (plan-id ?p)
+  (diagnosis-hypothesis (id ?diag-id))
+  ?action <- (plan-action (id ?action-id) (diag-id ?diag-id)
                           (action-name ?op) (executable FALSE))
-  (domain-precondition (plan-id ?p) (goal-id ?g) (grounded-with ?action-id)
+  (domain-precondition (diag-id ?diag-id) (env ?diag-id) (grounded-with ?action-id)
                        (part-of ?op)  (is-satisfied TRUE))
  =>
   (modify ?action (executable TRUE))
@@ -920,12 +903,10 @@
   "If the precondition of an action is not satisfied (anymore),
    the action is not executable."
   (declare (salience ?*SALIENCE-DOMAIN-CHECK*))
-
-  (goal (id ?g))
-  (plan (id ?p) (goal-id ?g))
-  ?action <- (plan-action (id ?action-id) (goal-id ?g) (plan-id ?p)
+  (diagnosis-hypothesis (id ?diag-id))
+  ?action <- (plan-action (id ?action-id) (diag-id ?diag-id)
                           (action-name ?op) (executable TRUE))
-  (domain-precondition (plan-id ?p) (goal-id ?g) (grounded-with ?action-id)
+  (domain-precondition (diag-id ?diag-id) (env ?diag-id) (grounded-with ?action-id)
                        (part-of ?op)  (is-satisfied FALSE))
  =>
   (modify ?action (executable FALSE))
@@ -1041,8 +1022,8 @@
 (defrule domain-check-value-predicate-clean-up-unique-value-error
   "Clean up the error if a value predicate no longer has multiple values."
   ?e <- (domain-error (error-type value-predicate-with-multiple-values))
-  (not (and (domain-fact (name ?pred) (param-values $?args ?val))
-            (domain-fact (name ?pred) (param-values $?args ?other-val&~?val))))
+  (not (and (domain-fact (env ?env) (name ?pred) (param-values $?args ?val))
+            (domain-fact (env ?env) (name ?pred) (param-values $?args ?other-val&~?val))))
 =>
   (retract ?e)
 )

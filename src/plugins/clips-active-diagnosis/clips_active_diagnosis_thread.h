@@ -81,7 +81,7 @@ class ClipsActiveDiagnosisThread
 
  private:
   std::map<std::string, fawkes::LockPtr<CLIPS::Environment> >  envs_;
-  std::vector<std::shared_ptr<ClipsDiagnosisEnvThread>> diag_envs_;
+  std::shared_ptr<ClipsDiagnosisEnvThread> diag_env_;
 
   std::map<std::string,int> fact_occurences_;
 
