@@ -72,7 +72,6 @@
   (PddlDiagInterface (id "diag-gen") (msg_id ?gen_id) (final TRUE) (success TRUE))
   =>
   (retract ?dg)
-  (printout error "Finished generation of pddl-diagnosis files for " ?plan-id crlf)
   (modify ?d (mode GENERATED))
   (pddl-diagnosis-call ?diag-id ?fault)
 )
@@ -96,7 +95,6 @@
           (purpose-id ?diag-id)
         )
   =>
-  (printout t "Fetched a new diagnosis!" crlf)
   (bind ?plan-id (bson-get (bson-get ?obj "o") "plan"))
   (bind ?cost (bson-get (bson-get ?obj "o") "cost"))
   (progn$ (?action (bson-get-array (bson-get ?obj "o") "actions"))

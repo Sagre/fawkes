@@ -114,11 +114,14 @@
    (multislot sensed-constants)
 )
 
-(deftemplate domain-sensing-action-results
+(deftemplate domain-sensing-action-result
   (slot plan-id (type SYMBOL))
   (slot goal-id (type SYMBOL))
   (slot plan-action-id (type INTEGER))
-  (slot fact-id (type SYMBOL))
+  (slot predicate (type SYMBOL))
+  (multislot predicate-names)
+  (multislot predicate-values)
+  (slot state (type SYMBOL) (allowed-values PENDING POSITIVE NEGATIVE))
 )
 
 (deftemplate domain-operator-parameter
@@ -807,7 +810,6 @@
 	=>
 	(do-for-all-facts ((?e domain-effect) (?pred domain-predicate))
 		(and (not ?pred:sensed) (eq ?e:part-of ?op) (eq ?e:predicate ?pred:name))
-    (printout t "Try effect: " ?e:predicate " of " ?e:part-of " with condition " ?e:condition crlf)
 		; apply if this effect is unconditional or the condition is satisfied
 		(if (or (not (any-factp ((?cep domain-precondition)) (eq ?cep:part-of ?e:condition)))
 						(any-factp ((?cep domain-precondition))
@@ -815,7 +817,6 @@
                             (eq ?cep:goal-id ?g) (eq ?cep:plan-id ?p)
                             ?cep:grounded (eq ?cep:grounded-with ?id))))
 		 then
-      (printout t "Apply Effect" crlf)
 			(bind ?values
 						(domain-ground-effect ?e:param-names ?e:param-constants
 																	?action-param-names ?action-param-values))

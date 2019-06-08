@@ -81,6 +81,7 @@
 	(slot wm-fact-id  (type STRING))
 	(multislot wm-fact-key (type SYMBOL))
 	(slot wm-fact-idx (type INTEGER))
+	(slot collection (type STRING))
 	(multislot update-timestamp (type INTEGER) (cardinality 2 2))
 )
 
@@ -239,14 +240,14 @@
 	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE) (collection ?collection))
 	?wf <- (wm-fact (id ?id) (key $?key-prefix $?rest)
 									(type ?type) (is-list ?is-list) (value ?value) (values $?values))
-	(not (wm-robmem-sync-map-entry (wm-fact-id ?id)))
+	(not (wm-robmem-sync-map-entry (wm-fact-id ?id) (collection ?collection)))
 	=>
 	;(printout error "Add " ?id " to robot memory" crlf)
 	(bind ?now (time-trunc-ms (now-systime)))
 	(assert (wm-robmem-sync-map-entry (wm-fact-id ?id) (wm-fact-key ?key-prefix ?rest)
+																		(collection ?collection)
 																		(wm-fact-idx (fact-index ?wf))
 																		(update-timestamp ?now)))
-	
 	(wm-robmem-sync-fact-update ?wf ?identity ?now ?collection)
 )
 
@@ -254,6 +255,7 @@
 	(wm-fact (key cx identity) (value ?identity))
 	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE) (collection ?collection))
 	?sm <- (wm-robmem-sync-map-entry (wm-fact-id ?id) (wm-fact-key $?key-prefix $?rest)
+																	 (collection ?collection)
 	(not (wm-fact (id ?id)))
 	=>
 	;(printout error "Remove " ?id " from robot memory" crlf)
@@ -269,7 +271,7 @@
 	(wm-fact (key cx identity) (value ?identity))
 	(wm-robmem-sync-conf (wm-fact-key-prefix $?key-prefix) (enabled TRUE) (collection ?collection))
 	?wf <- (wm-fact (id ?id) (key $?key-prefix $?rest))
-	?sm <- (wm-robmem-sync-map-entry (wm-fact-id ?id)
+	?sm <- (wm-robmem-sync-map-entry (wm-fact-id ?id) (collection ?collection)
 																	 (wm-fact-idx ?idx&:(neq ?idx (fact-index ?wf))))
 	=>
 	;(printout error "Modify " ?id " in robot memory" crlf)
