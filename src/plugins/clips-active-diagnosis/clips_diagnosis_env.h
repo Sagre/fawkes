@@ -79,4 +79,5 @@ class ClipsDiagnosisEnvThread
 
 std::string wm_fact_to_string(CLIPS::Fact::pointer fact);
 std::string clips_value_to_string(CLIPS::Value val);
+bool is_domain_fact(std::string fact_string);
 #endif

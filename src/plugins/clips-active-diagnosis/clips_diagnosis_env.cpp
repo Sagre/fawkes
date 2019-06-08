@@ -140,7 +140,6 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float diag
 				} else {
 					tmp->set_slot(slot,pa_fact->slot_value(slot));
 				}
-					
 			}
 		}
 	
@@ -417,6 +416,19 @@ std::string wm_fact_to_string(CLIPS::Fact::pointer fact)
 		ret += " " + clips_value_to_string(values[i]);
 	}
   return ret;
+}
+
+bool is_domain_fact(std::string fact_string)
+{
+	std::string domain_fact_prefix = "domain fact";
+	auto res = std::mismatch(domain_fact_prefix.begin(), domain_fact_prefix.end(), fact_string.begin());
+
+	if (res.first == domain_fact_prefix.end())
+	{
+  	return true;
+	} else {
+		return false;
+	}
 }
 
 std::string clips_value_to_string(CLIPS::Value val)

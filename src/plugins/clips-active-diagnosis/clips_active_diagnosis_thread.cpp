@@ -92,7 +92,7 @@ ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_i
   }
 
   BSONObjBuilder query_b;
-  query_b << "_id" << BSONRegEx("^/");
+  query_b << "_id" << BSONRegEx("^/domain/fact|^/hardware");
 
   BSONObj q = query_b.done();
   try{
@@ -295,6 +295,10 @@ ClipsActiveDiagnosisThread::integrate_measurement(int pos, std::string predicate
   return CLIPS::Value(valid_diags);
 }
 
+/*
+  calculates all wm-facts that are true in all hypotheses. Retracts all wm-facts from the executive environment which are not
+  part of these.
+*/
 CLIPS::Value
 ClipsActiveDiagnosisThread::update_common_knowledge()
 { 
@@ -316,19 +320,19 @@ ClipsActiveDiagnosisThread::update_common_knowledge()
     }
     if (fact_occurences_[diag_fact.first] > max) max = fact_occurences_[diag_fact.first];
   }
-  logger->log_error(name(),"Diagnosis count: %d",max);
-  
-  logger->log_info(name(),"Start matching fact bases");
+
   CLIPS::Fact::pointer cx_fact_ptr = clips->get_facts();
+  std::vector<std::string> cx_facts;
   while (cx_fact_ptr)
   {   
     if (cx_fact_ptr->get_template()->name() == "wm-fact")
     {
       std::string cx_fact_string = wm_fact_to_string(cx_fact_ptr);
-      if (fact_occurences_.find(cx_fact_string) != fact_occurences_.end() &&
-          fact_occurences_[cx_fact_string] != max)
+      cx_facts.push_back(cx_fact_string);
+      if (is_domain_fact(cx_fact_string) && (fact_occurences_.find(cx_fact_string) == fact_occurences_.end() ||
+                                             fact_occurences_[cx_fact_string] != max))
       {
-        logger->log_error(name(),"Retract: %s",cx_fact_string.c_str());
+        //logger->log_info(name(),"Retract: %s",cx_fact_string.c_str());
         CLIPS::Fact::pointer tmp(cx_fact_ptr->next());
         cx_fact_ptr->retract();
         cx_fact_ptr = tmp;
@@ -344,9 +348,9 @@ ClipsActiveDiagnosisThread::update_common_knowledge()
   std::map<std::string,int>::iterator it_count = fact_occurences_.begin();
   for (;it_count != fact_occurences_.end(); it_count++)
   {
-    if (it_count->second == max)
+    if (it_count->second == max && std::find(cx_facts.begin(), cx_facts.end(), it_count->first) == cx_facts.end())
     {
-      //logger->log_error(name(),"Assert: %s",it->first.c_str());
+      //logger->log_error(name(),"Assert: %s",it_count->first.c_str());
       CLIPS::Template::pointer wm_fact = clips->get_template("wm-fact");
 	    if (wm_fact) {
 		    CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,wm_fact);

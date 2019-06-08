@@ -88,7 +88,6 @@
     (do-for-all-facts ((?wm wm-fact)) (and (wm-key-prefix ?wm:key (create$ domain fact)) (eq ?wm:env DEFAULT))
         (duplicate ?wm (env ?id))
     )
-    (printout t "Copy wm-facts for " ?id crlf)
     (modify ?dh (state WM-FACTS-INIT))
 )
 
@@ -117,7 +116,7 @@
     (not (plan-action (diag-id ?diag-id) (state ?state&:(and (neq ?state FINAL) (neq ?state FORMULATED)))))
     =>
     (modify ?pa (state EXECUTION-SUCCEEDED))
-    (printout t "Seleceted next action " ?an " for " ?diag-id crlf)
+    ;(printout t "Seleceted next action " ?an " for " ?diag-id crlf)
 )
 
 (defrule diagnosis-plan-action-not-executable
@@ -140,6 +139,7 @@
     (printout t "Finished history propagation " ?diag-id crlf)
     (modify ?dh (state ACTIONS-PROPAGATED))
 )
+
 
 (defrule diagnosis-history-propagation-finished
     (diagnosis-setup-finished)
@@ -188,6 +188,6 @@
     (declare (salience -1))
     ?dsr <- (diagnosis-sensing-result (predicate ?pred) (args $?pred-args) (value ?val))
     =>
-    (printout t "Finished integrating sensing result ." ?pred ". " ?pred-args " " ?val crlf)
+    (printout t "Finished integrating sensing result " ?pred " " ?pred-args " " ?val crlf)
   ;  (retract ?dsr)
 )
