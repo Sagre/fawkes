@@ -116,6 +116,7 @@
         )
         (retract ?p)
     )
+    (domain-retract-grounding)
 )
 
 (defrule diag-goal-no-plan
