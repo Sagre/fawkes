@@ -67,6 +67,7 @@ class ClipsDiagnosisEnvThread
 	void add_plan_action(CLIPS::Fact::pointer pa_fact,float diag_id);
 
 	bool vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact);
+	float information_gain(std::string predicate, std::vector<std::string> key_args);
 	int sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
 
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */

@@ -66,7 +66,6 @@ ClipsActiveDiagnosisThread::clips_context_init(const std::string &env_name,
 
   clips.lock();
   clips->add_function("active-diagnosis-set-up", sigc::slot<CLIPS::Value, std::string>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::set_up_active_diagnosis)));
-  clips->add_function("active-diagnosis-final", sigc::slot<CLIPS::Value>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::finalize_diagnosis)));
   clips->add_function("active-diagnosis-delete", sigc::slot<void>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::delete_diagnosis)));
   clips->add_function("active-diagnosis-integrate-measurement", sigc::slot<CLIPS::Value,int, std::string, CLIPS::Values, CLIPS::Values>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::integrate_measurement)));
   clips->add_function("active-diagnosis-update-common-knowledge", sigc::slot<CLIPS::Value>(sigc::mem_fun(*this, &ClipsActiveDiagnosisThread::update_common_knowledge)));
@@ -257,26 +256,6 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string diag_id)
 }
 
 /*
-  Integrates the "true" diagnosis hypothesis into the world model, if there is only one left
-  Returns FALSE otherwise
-*/
-CLIPS::Value
-ClipsActiveDiagnosisThread::finalize_diagnosis()
-{
-  MutexLocker lock(envs_["executive"].objmutex_ptr());
-
-/*  std::map<std::string,int>::iterator it = fact_occurences_.begin();
-  for (;it != fact_occurences_.end();it++)
-  {
-    if (it->second < (int)diag_envs_.size()) {
-      return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
-    }
-  }*/
-  //delete_diagnosis();
-  return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
-}
-
-/*
   Clears all created diagnosis environments
 */
 void
@@ -294,36 +273,13 @@ CLIPS::Value
 ClipsActiveDiagnosisThread::information_gain(std::string grounded_predicate)
 {
   std::vector<std::string> pred_splitted = str_split(grounded_predicate, " ");
-  std::string fact_string = "domain fact";
-  fact_string += " " + pred_splitted[0] + " args?";
-
+  std::string predicate_name = pred_splitted[0];
+  std::vector<std::string> key_args;
   for (size_t i = 1; i < pred_splitted.size(); ++i)
   {
-    fact_string += " " + pred_splitted[i];
+    key_args.push_back(pred_splitted[i]);
   }
-
-  logger->log_info(name(),"Check gain of %s, %s", fact_string.c_str(), grounded_predicate.c_str());
-
-  int max = 0;
-  std::map<std::string,int>::iterator it = fact_occurences_.begin();
-  for (; it != fact_occurences_.end();it++)
-  {
-    if (it->second > max) max = it->second;
-  }
-
-  if (fact_occurences_.find(fact_string) == fact_occurences_.end()) {
-    logger->log_info(name(),"Not found: %s \n Not a predicate that the hyopthesises disagree on",fact_string.c_str());
-    return CLIPS::Value(0.0);
-  } else {
-    float valid = fact_occurences_[fact_string];
-    float total = max;
-    float entropy = -(1.0/log(2)) * ( (valid/total) * log((valid/total)) 
-                                      + ((total-valid)/total) * log((total-valid)/total) );
-    logger->log_info(name(),"Gain: %f",entropy);
-    return CLIPS::Value(entropy);
-  }
-  
-  return CLIPS::Value(0.0);
+  return CLIPS::Value(diag_env_->information_gain(predicate_name,key_args));
 }
 
 
@@ -336,7 +292,7 @@ ClipsActiveDiagnosisThread::integrate_measurement(int pos, std::string predicate
 
   int valid_diags = diag_env_->sensing_result((bool)pos,predicate,param_names,param_values);
   logger->log_info(name(),"Still %d hypotheses left after integrating %s",valid_diags,predicate.c_str());
-  return CLIPS::Value("TRUE", CLIPS::TYPE_SYMBOL);
+  return CLIPS::Value(valid_diags);
 }
 
 CLIPS::Value

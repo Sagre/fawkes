@@ -68,7 +68,6 @@ class ClipsActiveDiagnosisThread
   bool diag_env_initiate_plan_actions(const std::string &diag_id);
 
   CLIPS::Value set_up_active_diagnosis(std::string diag_id);
-  CLIPS::Value finalize_diagnosis();
   void delete_diagnosis();
   CLIPS::Value integrate_measurement(int pos, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
   CLIPS::Value information_gain(std::string grounded_predicate);

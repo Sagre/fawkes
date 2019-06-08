@@ -251,6 +251,33 @@ ClipsDiagnosisEnvThread::add_wm_fact_from_id(bool pos, std::string id)
 	}
 }
 
+float
+ClipsDiagnosisEnvThread::information_gain(std::string predicate, std::vector<std::string> key_args)
+{
+	MutexLocker lock(clips.objmutex_ptr());
+
+	std::string arguments = predicate;
+	//arguments += " (";
+	for (std::string key_arg : key_args)
+	{
+		arguments += " " + key_arg;
+	}
+//	arguments += ")";
+
+	CLIPS::Values ret = clips->function("diagnosis-information-gain",arguments);
+	if (ret.size() == 0)
+	{
+		logger->log_error(name(),"Failed to evaluate clips function (diagnosis-information-gain %s",arguments.c_str());
+		return 0.0;
+	}
+	if (ret.size() > 1)
+	{
+		logger->log_error(name(),"Unexpected multifield returned by (diagnosis-information-gain %s",arguments.c_str());
+		return 0.0;
+	}
+	return ret[0].as_float();
+}
+
 void
 ClipsDiagnosisEnvThread::add_sensing_result_from_key(bool pos, std::string predicate, std::vector<std::string> key_args)
 {
@@ -330,9 +357,16 @@ ClipsDiagnosisEnvThread::sensing_result(bool positive, std::string predicate, CL
 	clips->refresh_agenda();
 	clips->run();
 
+	int diag_count;
+ 	CLIPS::Values clips_diag_count = clips->function("diagnosis-hypothesis-count");
+	if (clips_diag_count.size() != 1) {
+		logger->log_error(name(),"Failed to count diagnosis hypotheses");
+		return 0;
+	} else {
+		diag_count = (int)clips_diag_count[0].as_float();
+	}
 
-
-	return 2;
+	return diag_count;
 }
 
 void
