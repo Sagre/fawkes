@@ -149,6 +149,19 @@
     (modify ?dss (state HISTORY-PROPAGATED))
 )
 
+
+(defrule diagnosis-hypothesis-remove-similare-world-state
+    ?dh1 <- (diagnosis-hypothesis (id ?diag-id1) (state ACTIONS-PROPAGATED))
+    ?dh2 <- (diagnosis-hypothesis (id ?diag-id2&:(neq ?diag-id1 ?diag-id2)) (state ACTIONS-PROPAGATED))
+    (not (and (wm-fact (env ?diag-id1) (id ?id))
+              (not (wm-fact (env ?diag-id2) (id ?id)))
+         )
+    )
+    =>
+    (printout t "Retract " ?diag-id1 " because it results in the same worldmodel as " ?diag-id2 crlf)
+    (diagnosis-exclude-hypothesis ?diag-id2)
+)
+
 (defrule diagnosis-exclude-hypothesis-positive
     ?dsr <- (diagnosis-sensing-result (predicate ?pred)
                     (args $?pred-args)
