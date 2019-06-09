@@ -65,6 +65,7 @@ PddlDiagnosisThread::init()
 {
   //read config values
   world_model_dump_prefix_ = StringConversions::resolve_path("@BASEDIR@/" + config->get_string("plugins/pddl-diagnosis/world-model-dump-prefix"));
+
   input_path_domain_ = StringConversions::resolve_path("@BASEDIR@/src/clips-specs/" +
     config->get_string("plugins/pddl-diagnosis/input-diagnosis-domain"));
   input_path_desc_ = StringConversions::resolve_path("@BASEDIR@/src/clips-specs/" +
@@ -73,14 +74,13 @@ PddlDiagnosisThread::init()
     config->get_string("plugins/pddl-diagnosis/output-diagnosis-domain"));
   output_path_desc_ = StringConversions::resolve_path("@BASEDIR@/src/clips-specs/" +
     config->get_string("plugins/pddl-diagnosis/output-diagnosis-description"));
-  world_model_ = config->get_string("plugins/pddl-diagnosis/world-model");
+
+  if(config->exists("plugin/pddl-diagnosis/plan_id"))
+  plan_ = config->get_string("plugins/pddl-diagnosis/plan_id");
+
   if(config->exists("plugins/pddl-diagnosis/goal"))
     goal_ = config->get_string("plugins/pddl-diagnosis/goal");
-  if(config->exists("plugins/pddl-diagnosis/world-model-dump"))
-    plan_ = config->get_string("plugins/pddl-diagnosis/world-model-dump");
 
-
-  logger->log_info(name(),"Started Interface on %s",config->get_string("plugins/pddl-diagnosis/interface-name").c_str());
   //setup interface
   gen_if_ = blackboard->open_for_writing<PddlDiagInterface>(config->get_string("plugins/pddl-diagnosis/interface-name").c_str());
   gen_if_->set_msg_id(0);
@@ -97,6 +97,13 @@ PddlDiagnosisThread::init()
   }
 }
 
+/**
+ * @brief Seaches the input string for queries of the form <<#templateName|mongodb-query>>
+ * eg <<#DOMAINOBJECTS|domain/object>>
+ * 
+ * @param input Input string
+ * @return std::map<std::string, std::string> Return a map if template names to mongodb queries
+ */
 std::map<std::string, std::string>
 PddlDiagnosisThread::fill_template_desc(std::string &input) { 
   //find queries in template
@@ -134,6 +141,7 @@ PddlDiagnosisThread::fill_template_desc(std::string &input) {
 /*
  * Fills problem file template with domain-facts from the world model before executing the plan
  * Adds goal description
+ * Return 0 if successful, -1 otherwise
  */
 int
 PddlDiagnosisThread::create_problem_file()
@@ -153,7 +161,6 @@ PddlDiagnosisThread::create_problem_file()
     return -1;
   }
 
-
   //set template delimeters to << >>
   input_desc = "{{=<< >>=}}" +  input_desc;
   ctemplate::TemplateDictionary dict("pddl-rm");
@@ -161,13 +168,18 @@ PddlDiagnosisThread::create_problem_file()
   
   std::map<std::string, std::string> queries = fill_template_desc(input_desc);
 
+  // Restore world model that was true at the beginning of plan execution
   std::string world_model_path = StringConversions::resolve_path(world_model_dump_prefix_ + "/" + plan_);
   if (robot_memory->restore_collection(collection_,world_model_path,"diagnosis.worldmodel") == 0)
   {
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
     return -1;
   }
+
   logger->log_info(name(),"Starting diagnosis pddl file generation");
+
+  // For each query found in the template file, query the restored worldmodel and fill
+  // the ctemplate dictionary
   std::map<std::string, std::string>::iterator it = queries.begin();
   for (;it != queries.end(); it++) {
     BSONObjBuilder query_b;
@@ -183,7 +195,7 @@ PddlDiagnosisThread::create_problem_file()
 	      fill_dict_from_document(entry_dict, obj);
       }
     } else {
-      logger->log_error(name(),"Failed to query for wm-facts");
+      logger->log_error(name(),"Failed to query for regex %s", it->second.c_str());
       return -1;
     }
   }
@@ -227,6 +239,7 @@ PddlDiagnosisThread::create_problem_file()
 
 /*
  * Takes given Plan id, grabs already executed plan-actions from robot-memory, creates order actions
+ * Return 0 if successfull, -1 otherwise
  */
 int
 PddlDiagnosisThread::create_domain_file()
@@ -248,6 +261,7 @@ PddlDiagnosisThread::create_domain_file()
 
   BSONObj q = query_b.done();
 
+  // Query diagnosis collection for executed plan-actions
   std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"robmem.diagnosis");
   std::vector<PlanAction> history;
   if (c) {
@@ -263,28 +277,36 @@ PddlDiagnosisThread::create_domain_file()
     return -1;
   }
 
+  // Query the diagnosis collection for transitions of hardware components
+  // These are used to create the exogenous actions representing state changes
+  // Collect all existing states and components on the way to add them as objects and types
   BSONObjBuilder query_hardware_edge;
   query_hardware_edge << "_id" << BSONRegEx("^/hardware/edge");
   q = query_hardware_edge.done();
 
-  c = robot_memory->query(q,"robmem.diagnosis");
   std::map<std::string,std::vector<ComponentTransition>> comp_transitions;
   std::vector<std::string> components;
   std::vector<std::string> states;
+
+  c = robot_memory->query(q,"robmem.diagnosis");
   if (c) {
     while(c->more()) {
       BSONObj obj = c->next();
       ComponentTransition trans = bson_to_comp_trans(obj);
       if (!trans.executable) {
+        //Transition is exogenous and has to be added as pddl action
         comp_transitions[trans.name].push_back(trans);
       }
       if (std::find(components.begin(), components.end(), trans.component) == components.end()) {
+        //New component found
         components.push_back(trans.component);
       }
       if (std::find(states.begin(), states.end(), trans.from) == states.end()) {
+        //New state found
         states.push_back(trans.from);
       }
       if (std::find(states.begin(), states.end(), trans.to) == states.end()) {
+        //New state found
         states.push_back(trans.to);
       }
     }
@@ -293,36 +315,52 @@ PddlDiagnosisThread::create_domain_file()
     return -1;
   }
 
+  // Sort history according to their ids in a vector in order to correctly create the order actions
   std::vector<PlanAction> history_sorted;
   int history_length = history.size(); 
   for (int i = 1; i <= history_length; ++i) {
+    bool found = false;
     for (std::vector<PlanAction>::iterator it = history.begin(); it != history.end(); ++it) {
       if (it->id == i) {
         PlanAction new_pa;
+
         new_pa.id = it->id;
         new_pa.name = it->name;
         new_pa.param_names = it->param_names;
         new_pa.param_values = it->param_values;
         new_pa.plan = it->plan;
+
         history.erase(it);
         history_sorted.push_back(new_pa);
+
+        found = true;
         break;
       }
     }
+    if (!found) {
+      logger->log_error(name(),"Missing plan action with id %d in history stored in the diagnosis collection \n \t \
+                                  This may result in an incomplete diagnosis generation.",i);
+    }
   }
-
-
+  //Dummy action to enforce the last order action to result in "next-FINISH"
   PlanAction last;
   last.id = history_sorted.size()+1;
   last.name = "FINISH";
   history_sorted.push_back(last);
+
+
+  // Fill domain file template
+  // Possible replacements: <<#constants>>, <<#exog-actions>>, <<#order-actions>>
 
   size_t cur_pos = input_domain.find("<<#",0);
   while(cur_pos != std::string::npos)
   {
     size_t tpl_end_pos =  input_domain.find(">>", cur_pos);
     std::string template_name = input_domain.substr(cur_pos + 3, tpl_end_pos - cur_pos - 3);
+
     if (template_name == "constants") {
+      // Add all dynamic constants to the pddl domain file
+      // Namely components and component states
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
 
       for (std::string state : states) {
@@ -336,22 +374,34 @@ PddlDiagnosisThread::create_domain_file()
         input_domain.insert(cur_pos,pddl_comp);
         cur_pos = cur_pos + pddl_comp.length();
       }
-    }
-    if (template_name == "exog-actions") {
+    } else if (template_name == "exog-actions") {
+      // Add all exogenous actions that represent component state changes
+      // Since the same action can trigger different transitions, we have to use
+      // conditional effects.
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
   
       std::map<std::string,std::vector<ComponentTransition>>::iterator it = comp_transitions.begin();
       while( it != comp_transitions.end()) {
-          std::string exog_template = "(:action <<#name>>\n :parameters ()\n :precondition (or <<#comps-from>>)\n :effect (and <<#comps-when>> \n (increase (total-cost) 1)\n )\n)\n";
+          std::string exog_template = "(:action <<#name>>\n \
+                                        :parameters ()\n \
+                                        :precondition (and (exog-possible) (or <<#comps-from>>)\n \
+                                        :effect (and <<#comps-when>>\n \
+                                              \t\t(increase (total-cost) 1)\n \
+                                                )\n \
+                                        )\n";
           ComponentTransition trans = it->second[0];
+          // Replace the name with the name of the transition actions
           std::string exog_replaced = find_and_replace(exog_template,"<<#name>>",trans.name);
 
+          // Disjunctive precondition, enforcing the components being in one of the orgin states
+          // from which the action can trigger a transition
           std::string comps_from = "";
           for (ComponentTransition trans : it->second) {
             comps_from += "(comp-state " + trans.component + " " + trans.from + ") ";
           }
           exog_replaced = find_and_replace(exog_replaced,"<<#comps-from>>",comps_from);
 
+          // Conditional effect for each of the transitions
           std::string comps_when = "";
           for (ComponentTransition trans : it->second) {
             comps_when += "\n (when (comp-state " + trans.component + " " + trans.from + ")\n";
@@ -363,13 +413,15 @@ PddlDiagnosisThread::create_domain_file()
           cur_pos = cur_pos + exog_replaced.length();
           it++;
       }
-    }
-    if (template_name == "order-actions"){
+    } else if (template_name == "order-actions"){
+      // Insert all order actions that enforce the executed history
+      // For each action in the history there is a order action enforcing 
+      // one action of that type in the generated diagnosis hypothesis
       input_domain.erase(cur_pos,tpl_end_pos - cur_pos + 2);
       std::string order_template = "(:action order_<<#id>>\n \
                                       :parameters ()\n \
                                       :precondition (and (last-<<#lastname>> <<#lastvalues>>))\n \
-                                      :effect (and (not (last-<<#lastname>> <<#lastvalues>>)) (next-<<#name>> <<#values>>))\n \
+                                      :effect (and (exog-possible) (not (last-<<#lastname>> <<#lastvalues>>)) (next-<<#name>> <<#values>>))\n \
                                       )\n\n";
       std::string last_name = "BEGIN";
       std::string last_values = "";
@@ -394,6 +446,8 @@ PddlDiagnosisThread::create_domain_file()
         cur_pos = cur_pos + order_replaced.length();
 
       }
+    } else {
+      logger->log_warn(name(),"Unknown template name %s found in diagnosis domain template file",template_name.c_str());
     }
     cur_pos = input_domain.find("<<#",tpl_end_pos);
   }
@@ -456,10 +510,13 @@ PddlDiagnosisThread::bb_interface_message_received(Interface *interface, fawkes:
     gen_if_->set_final(false);
     gen_if_->write();
     if(std::string(msg->goal()) != "")
+      // Fault for which an explanation is searched
       goal_ = msg->goal();
     if(std::string(msg->plan()) != "")
-      plan_ = std::string(msg->plan());// StringConversions::resolve_path(world_model_dump_prefix_ + "/" + std::string(msg->world_model_dump()));
+      // ID of the plan that lead to the fault
+      plan_ = std::string(msg->plan());
     if(std::string(msg->collection()) != "" && std::string(msg->collection()).find(".") != std::string::npos)
+      // Name of the world model dump collection: db.collection
       collection_ = msg->collection();
     wakeup(); //activates loop where the generation is done
   } else {
@@ -469,6 +526,14 @@ PddlDiagnosisThread::bb_interface_message_received(Interface *interface, fawkes:
   return false;
 }
 
+/**
+ * @brief Replaces each occurance of the find string with the replace string in the input string
+ * 
+ * @param input String in which all instances of the find string should be relaced
+ * @param find String to be replaced
+ * @param replace String to replace
+ * @return std::string Input string in which all instances of the find string is replaced
+ */
 std::string
 PddlDiagnosisThread::find_and_replace(const std::string &input, const std::string &find, const std::string &replace)
 {
@@ -482,6 +547,14 @@ PddlDiagnosisThread::find_and_replace(const std::string &input, const std::strin
 
 }
 
+/**
+ * @brief Creates a PlanAction object from a bson obj
+ *        The bson obj should have an _id field that contains a wm-fact id (Refer to the clips-executive definition of wm-facts)
+ *        eg _id : "/diagnosis/plan-action/move?plan=TEST-PLAN&id=1&r=R-1&to=C-CS1&to-side=INPUT"
+ * 
+ * @param obj 
+ * @return PddlDiagnosisThread::PlanAction 
+ */
 PddlDiagnosisThread::PlanAction
 PddlDiagnosisThread::bson_to_plan_action(BSONObj obj)
 {
@@ -513,7 +586,14 @@ PddlDiagnosisThread::bson_to_plan_action(BSONObj obj)
   return ret;
 }
 
-
+/**
+ * @brief Creates a ComponentTransition object from a bson obj.
+ *        The bson obj is assumed to have an _id field that contains a wm-fact id. Refer to the clips-executive definition of wm-facts
+ *        eg. _id : "/hardware/edge?comp=gripper&from=CALIBRATED&to=FINGERS-BROKEN&trans=break_gripper_fingers&prob=0.5&exec=nil"
+ * 
+ * @param obj 
+ * @return PddlDiagnosisThread::ComponentTransition 
+ */
 PddlDiagnosisThread::ComponentTransition
 PddlDiagnosisThread::bson_to_comp_trans(BSONObj obj)
 {
@@ -550,6 +630,13 @@ PddlDiagnosisThread::bson_to_comp_trans(BSONObj obj)
   return ret;
 }
 
+/**
+ * @brief Checks if a wm-fact id refers to a domain fact. 
+ * 
+ * @param key_str 
+ * @return true 
+ * @return false 
+ */
 bool PddlDiagnosisThread::is_domain_fact(std::string key_str)
 {
   std::string domain_fact_prefix = "/domain/fact";
@@ -562,6 +649,13 @@ bool PddlDiagnosisThread::is_domain_fact(std::string key_str)
   return false;
 }
 
+/**
+ * @brief Checks if a wm-fact id refers to a domain-object
+ * 
+ * @param key_str 
+ * @return true 
+ * @return false 
+ */
 bool PddlDiagnosisThread::is_domain_object(std::string key_str)
 {
   std::string domain_fact_prefix = "/domain/object";
