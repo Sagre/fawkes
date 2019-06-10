@@ -2,10 +2,9 @@
 /***************************************************************************
  *  clips_active_diagnosis_thread.h - CLIPS feature for accessing the robot memory
  *
- *  Plugin created: Mon Aug 29 15:41:47 2016
+ *  Plugin created: Mon Mai 19 15:41:47 2019
 
- *  Copyright  2016  Frederik Zwilling
- *             2013  Tim Niemueller [www.niemueller.de]
+ *  Copyright  2019 Daniel Habering
  *
  ****************************************************************************/
 
@@ -62,12 +61,12 @@ class ClipsActiveDiagnosisThread
           fawkes::LockPtr<CLIPS::Environment> &clips);
   virtual void clips_context_destroyed(const std::string &env_name);
 
-  std::vector<float> get_hypothesis_ids(const std::string &diag_id);
-  std::string get_plan_id_from_diag_id(const std::string &diag_id);
+  std::vector<float> get_hypothesis_ids();
+  std::string get_plan_id_from_diag_id();
   bool diag_env_initiate_wm_facts(const std::string &plan_id);
-  bool diag_env_initiate_plan_actions(const std::string &diag_id);
+  bool diag_env_initiate_plan_actions();
 
-  CLIPS::Value set_up_active_diagnosis(std::string diag_id);
+  CLIPS::Value set_up_active_diagnosis(std::string env_name, std::string diag_id);
   void delete_diagnosis();
   CLIPS::Value integrate_measurement(int pos, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
   CLIPS::Value information_gain(std::string grounded_predicate);
@@ -82,6 +81,11 @@ class ClipsActiveDiagnosisThread
   std::map<std::string, fawkes::LockPtr<CLIPS::Environment> >  envs_;
   std::shared_ptr<ClipsDiagnosisEnvThread> diag_env_;
 
+  std::string env_name_;
+  std::string diag_id_;
+
+  std::string world_model_dump_prefix_;
+  std::string collection_;
   std::map<std::string,int> fact_occurences_;
 
  private:

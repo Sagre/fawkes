@@ -1,9 +1,9 @@
 
 /***************************************************************************
- *  clips_active_diagnosis_thread.cpp -  CLIPS active_diagnosis
+ *  clips_diagnosis_env.cpp -  CLIPS active_diagnosis
  *
- *  Created: Tue Sep 19 12:00:06 2017
- *  Copyright  2006-2017  Tim Niemueller [www.niemueller.de]
+ *  Created: Tue May 19 12:00:06 2019
+ *  Copyright  2019 Daniel Habering
  ****************************************************************************/
 
 /*  This program is free software; you can redistribute it and/or modify
@@ -29,10 +29,10 @@
 
 using namespace fawkes;
 using namespace mongo;
-/** @class ClipsDiagnosisEnvThread "clips_active_diagnosis_thread.h"
- * Main thread of CLIPS-based active_diagnosis.
+/** @class ClipsDiagnosisEnvThread "clips_diagnosis_env.h"
+ * Thread maintaining the diagnosis environment
  *
- * @author Tim Niemueller
+ * @author Daniel Habering
  */
 
 /** Constructor. */
@@ -111,18 +111,28 @@ ClipsDiagnosisEnvThread::init()
 	clips->run();
 }
 
+/**
+ * @brief Add a plan-action to the diagnosis environment. The plan-action template differs from
+ * the plan-action from the clips environment, since there is no goal/plan lifecycle, but
+ * plan-actions belong to a diagnosis-hypothesis
+ * 
+ * @param pa_fact Pointer to the clips-executive style plan-action fact
+ * @param hypo_id Id of the diagnosis candidate the plan-action belongs to
+ */
 void
-ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float diag_id)
+ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float hypo_id)
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
 	CLIPS::Template::pointer plan_action = clips->get_template("plan-action");
 	if (plan_action) {
 		CLIPS::Fact::pointer tmp = CLIPS::Fact::create(**clips,plan_action);
+		// Copy all slots over to the new plan-action fact
 		for (std::string slot : tmp->slot_names()) {
 			if (pa_fact->slot_value(slot).empty()) {
+				// Fill the diag-id slot with the hypothesis id
 				if (slot == "diag-id") {
-					tmp->set_slot(slot,CLIPS::Value(std::to_string(diag_id),CLIPS::TYPE_SYMBOL));
+					tmp->set_slot(slot,CLIPS::Value(std::to_string(hypo_id),CLIPS::TYPE_SYMBOL));
 					continue;
 				}
 				if (plan_action->slot_default_type(slot) == CLIPS::DefaultType::NO_DEFAULT) {
@@ -142,7 +152,6 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float diag
 				}
 			}
 		}
-	
 
 		if (!clips->assert_fact(tmp)){
 			logger->log_error(name(),"Failed to assert plan-action %s",tmp->slot_value("action-name")[0].as_string().c_str());
@@ -150,6 +159,13 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float diag
 	}
 }
 
+/**
+ * @brief Check if the diagnosis initialization is finished. Say, that the different histories finished
+ * propagating
+ * 
+ * @return true If the diagnosis-setup-stage of the diagnosis environment is in state HISTORY-PROPAGATED
+ * @return false Otherwise
+ */
 bool
 ClipsDiagnosisEnvThread::clips_init_finished()
 {
@@ -173,6 +189,11 @@ ClipsDiagnosisEnvThread::clips_init_finished()
 	return false;
 }
 
+/**
+ * @brief Inform the diagnosis environment that the setup is finished. This means that all
+ * plan-actions and all wm-facts are asserted and that history propagation can start
+ * 
+ */
 void
 ClipsDiagnosisEnvThread::setup_finished()
 {
@@ -183,6 +204,11 @@ ClipsDiagnosisEnvThread::setup_finished()
 	clips->assert_fact("(diagnosis-setup-finished)");
 }
 
+/**
+ * @brief Assert a new diagnosis hypothesis to the diagnosis environment
+ * 
+ * @param hypo_id Id of the diagnosis hypothesis
+ */
 void
 ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(float hypo_id) 
 {
@@ -213,6 +239,12 @@ ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(float hypo_id)
 	
 }
 
+/**
+ * @brief Assert a wm-fact to the diagnosis environment for a given wm-fact id
+ * 
+ * @param pos Flag if the value of the fact should be true or false
+ * @param id wm-fact id string
+ */
 void
 ClipsDiagnosisEnvThread::add_wm_fact_from_id(bool pos, std::string id)
 {
@@ -235,6 +267,7 @@ ClipsDiagnosisEnvThread::add_wm_fact_from_id(bool pos, std::string id)
 		}
 
 		tmp->set_slot("values",CLIPS::Values());
+
 		tmp->set_slot("env",CLIPS::Value("DEFAULT",CLIPS::TYPE_SYMBOL));
 
 		try{
@@ -250,18 +283,25 @@ ClipsDiagnosisEnvThread::add_wm_fact_from_id(bool pos, std::string id)
 	}
 }
 
+/**
+ * @brief Check the information gain of a grounded sensed predicate onto the hypotheses set.
+ * Refer to Mühlbacher, Clemens, and Gerald Steinbauer. "Active Diagnosis for Agents with Belief Management."
+ * 
+ * @param predicate Predicate name
+ * @param key_args Grounded parameters of the predicate. It is assumed that the key_args vector contains parameter names
+ * and values in an alternating fashion. Eg m C-CS1 side INPUt
+ * @return float A value between 0 and 1 representing the mutual information gain.
+ */
 float
 ClipsDiagnosisEnvThread::information_gain(std::string predicate, std::vector<std::string> key_args)
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
 	std::string arguments = predicate;
-	//arguments += " (";
 	for (std::string key_arg : key_args)
 	{
 		arguments += " " + key_arg;
 	}
-//	arguments += ")";
 
 	CLIPS::Values ret = clips->function("diagnosis-information-gain",arguments);
 	if (ret.size() == 0)
@@ -277,6 +317,14 @@ ClipsDiagnosisEnvThread::information_gain(std::string predicate, std::vector<std
 	return ret[0].as_float();
 }
 
+/**
+ * @brief Insert a domain-sensing-result fact to the diagnosis environment, informing it about a new sensing result
+ * The diagnosis environment then excludes all contradicting hypotheses.
+ * 
+ * @param pos True if the predicate is sensed as true, false otherwise
+ * @param predicate Name of the sensed predicate
+ * @param key_args Parameters of the sensed predicate. Assumed to have parameter names and parameter values in an alternating fashion
+ */
 void
 ClipsDiagnosisEnvThread::add_sensing_result_from_key(bool pos, std::string predicate, std::vector<std::string> key_args)
 {
@@ -314,6 +362,12 @@ ClipsDiagnosisEnvThread::add_sensing_result_from_key(bool pos, std::string predi
 	}
 }
 
+/**
+ * @brief Return a vector of pairs where the first entry of a pair is the id string of a wm-fact
+ * and the second entry is the id of the diagnosis in which this wm-fact is true.
+ * 
+ * @return std::vector<std::pair<std::string,std::string>> vector of wm-fact id strings and hypothesis ids
+ */
 std::vector<std::pair<std::string,std::string>>
 ClipsDiagnosisEnvThread::get_fact_strings()
 {
@@ -324,17 +378,27 @@ ClipsDiagnosisEnvThread::get_fact_strings()
 	while (fact_ptr) {
 		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
 		if (tmpl->name() == "wm-fact") {
-			ret.push_back(std::make_pair(wm_fact_to_string(fact_ptr),fact_ptr->slot_value("env")[0].as_string()));
+			ret.push_back(std::make_pair(fact_ptr->slot_value("id")[0].as_string(),
+																	 fact_ptr->slot_value("env")[0].as_string()));
 		}
 		fact_ptr = fact_ptr->next();
 	}
 	return ret;
 }
 
+/**
+ * @brief Integrate a sensing result to the diagnosis environment and check the amount of diagnosis
+ * hypotheses that are still valid after integrating the sensing result
+ * 
+ * @param positive True if the predicated was sensed as true
+ * @param predicate Name of the predicate
+ * @param param_names Vector of parameter names
+ * @param param_values Vector of parameter values, where the ith value refer to the ith parameter of param_names
+ * @return int The number of diagnosis hypotheses still valid after integrating the sensing result
+ */
 int
-ClipsDiagnosisEnvThread::sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
+ClipsDiagnosisEnvThread::integrate_sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values)
 {
-//
 	MutexLocker lock(clips.objmutex_ptr());
 
 	std::vector<std::string> key_list;
@@ -372,25 +436,6 @@ void
 ClipsDiagnosisEnvThread::finalize()
 {
 	MutexLocker lock(clips.objmutex_ptr());
-/*	CLIPS::Fact::pointer ret = clips->get_facts();
-  while(ret) {
-		std::vector<std::string> slot_names = ret->slot_names();
-		std::string slot_str = "(" + ret->get_template()->name() + " ";
-		for (std::string slot : slot_names) {
-			slot_str += "(" + slot + " ";
-			for (CLIPS::Value val : ret->slot_value(slot)) {
-				if(val.type() == CLIPS::TYPE_STRING || val.type() == CLIPS::TYPE_SYMBOL) {
-					slot_str += val.as_string() + " ";
-				}
-				else{
-					slot_str += std::to_string(val.as_float()) + " ";
-				}
-			}
-			slot_str += ") ";
-		}
-		logger->log_info(name(),slot_str.c_str());
-		ret = ret->next();
-	}*/
 	logger->log_info(name(),"Killed diagnosis environment: %s", diag_id_.c_str());
 	clips->clear();
 	clips->refresh_agenda();
@@ -402,54 +447,7 @@ void
 ClipsDiagnosisEnvThread::loop()
 {
 	MutexLocker lock(clips.objmutex_ptr());
-
 	clips->refresh_agenda();
 	clips->run();
 }
 
-std::string wm_fact_to_string(CLIPS::Fact::pointer fact)
-{
-  CLIPS::Template::pointer tmpl = fact->get_template();
-	CLIPS::Values values = fact->slot_value("key");
-	std::string ret = clips_value_to_string(values[0]);
-	for (size_t i = 1; i < values.size(); ++i){
-		ret += " " + clips_value_to_string(values[i]);
-	}
-  return ret;
-}
-
-bool is_domain_fact(std::string fact_string)
-{
-	std::string domain_fact_prefix = "domain fact";
-	auto res = std::mismatch(domain_fact_prefix.begin(), domain_fact_prefix.end(), fact_string.begin());
-
-	if (res.first == domain_fact_prefix.end())
-	{
-  	return true;
-	} else {
-		return false;
-	}
-}
-
-std::string clips_value_to_string(CLIPS::Value val)
-{
-  switch (val.type()){
-    case CLIPS::TYPE_STRING:
-      return val.as_string();
-      break;
-    case CLIPS::TYPE_SYMBOL:
-      return val.as_string();
-      break;
-    case CLIPS::TYPE_INSTANCE_NAME:
-      return val.as_string(); 
-      break;
-    case CLIPS::TYPE_FLOAT:
-      return std::to_string(val.as_float());
-      break;
-    case CLIPS::TYPE_INTEGER:
-      return std::to_string(val.as_float());
-      break;
-    default:
-      return "";
-  }
-}

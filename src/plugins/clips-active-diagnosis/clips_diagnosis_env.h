@@ -1,8 +1,8 @@
 /***************************************************************************
- *  clips_active_diagnosis_thread.h - CLIPS-based active_diagnosis plugin
+ *  clips_diagnosis_env.h - CLIPS-based active_diagnosis plugin
  *
- *  Created: Tue Sep 19 11:59:44 2017
- *  Copyright  2006-2017  Tim Niemueller [www.niemueller.de]
+ *  Created: Tue May 19 11:59:44 2017
+ *  Copyright  2019 Daniel Habering
  *
  ****************************************************************************/
 
@@ -19,8 +19,8 @@
  *  Read the full text in the LICENSE.GPL file in the doc directory.
  */
 
-#ifndef _PLUGINS_CLIPS_ACTIVE_DIAGNOSIS_ENV_CLIPS_DIAGNOSIS_ENV_THREAD_H_
-#define _PLUGINS_CLIPS_ACTIVE_DIAGNOSIS_CLIPS_DIAGNOSIS_ENV_THREAD_H_
+#ifndef _PLUGINS_CLIPS_DIAGNOSIS_ENV_THREAD_H_
+#define _PLUGINS_CLIPS_DIAGNOSIS_ENV_THREAD_H_
 
 #include <core/threading/thread.h>
 #include <aspect/clock.h>
@@ -68,7 +68,7 @@ class ClipsDiagnosisEnvThread
 
 	bool vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact);
 	float information_gain(std::string predicate, std::vector<std::string> key_args);
-	int sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
+	int integrate_sensing_result(bool positive, std::string predicate, CLIPS::Values param_names, CLIPS::Values param_values);
 
 	/** Stub to see name in backtrace for easier debugging. @see Thread::run() */
  protected: virtual void run() { Thread::run(); }
@@ -77,7 +77,4 @@ class ClipsDiagnosisEnvThread
     std::string diag_id_;
 };
 
-std::string wm_fact_to_string(CLIPS::Fact::pointer fact);
-std::string clips_value_to_string(CLIPS::Value val);
-bool is_domain_fact(std::string fact_string);
 #endif
