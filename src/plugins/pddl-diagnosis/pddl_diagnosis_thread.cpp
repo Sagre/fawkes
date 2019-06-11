@@ -384,7 +384,7 @@ PddlDiagnosisThread::create_domain_file()
       while( it != comp_transitions.end()) {
           std::string exog_template = "(:action <<#name>>\n \
                                         :parameters ()\n \
-                                        :precondition (and (exog-possible) (or <<#comps-from>>)\n \
+                                        :precondition (and (exog-possible) (or <<#comps-from>>))\n \
                                         :effect (and <<#comps-when>>\n \
                                               \t\t(increase (total-cost) 1)\n \
                                                 )\n \
