@@ -72,7 +72,8 @@
                     (if ?param-index then
                         (bind ?sensed-predicate (create$ ?sensed-predicate ?pn (nth$ ?param-index ?pa:param-values)))
                         (bind ?sensed-predicate-names (create$ ?sensed-predicate-names ?pn))
-                        (bind ?sensed-prediacte-values (create$ ?sensed-predicate-values (nth$ ?param-index ?pa:param-values)))
+                        ;(printout t "Param value of " ?pn " " (nth$ ?param-index ?pa:param-values) crlf)
+                        (bind ?sensed-predicate-values (create$ ?sensed-predicate-values (nth$ ?param-index ?pa:param-values)))
                     else
                         (bind ?param-index (member$ ?pn ?dsa:sensed-param-names))
                         (bind ?const (nth$ ?param-index ?dsa:sensed-constants))
@@ -123,10 +124,14 @@
     ?g <- (goal (id ?id) (class ACTIVE-DIAGNOSIS-SENSE) (mode EXPANDED))
     (or (not (plan (goal-id ?id)))
         (not (and (plan (goal-id ?id) (id ?plan-id))
-             (not (diag-plan-information-gain (plan-id ?plan-id) (gain ?gain&:(> ?gain 0.0001)))))
+             (diag-plan-information-gain (plan-id ?plan-id) (gain ?gain&:(> ?gain 0.0001))))
         )
     )
     =>
+    (do-for-all-facts ((?dsar domain-sensing-action-result)) (eq ?dsar:goal-id ?id)
+        (retract ?dsar)
+    )
+    (active-diagnosis-delete)
     (modify ?g (mode RETRACTED) (outcome REJECTED))
 )
 
@@ -146,11 +151,17 @@
     ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?id) (plan-action-id ?pa-id)
                     (predicate ?predicate) 
                     (predicate-names $?predicate-names) 
-                    (predicate-values $?predicate-values))
+                    (predicate-values $?predicate-values)
+                    (state ?res&:(or (eq ?res POSITIVE) (eq ?res NEGATIVE))))
     ?d <- (diagnosis (id ?gen-id))
     =>
     (printout t "Integrating " ?predicate " " ?predicate-names " " ?predicate-values crlf)
-    (bind ?diag-count (active-diagnosis-integrate-measurement 1 (str-cat ?predicate) ?predicate-names ?predicate-values))
+    (if (eq ?res POSITIVE) then
+        (bind ?pos 1)
+    else
+        (bind ?pos 0)
+    )
+    (bind ?diag-count (active-diagnosis-integrate-measurement ?pos (str-cat ?predicate) ?predicate-names ?predicate-values))
     (active-diagnosis-update-common-knowledge)
     (if (and (neq ?diag-count 1) (eq ?outcome COMPLETED)) then
         (assert (goal (id (sym-cat ACTIVE-DIAGNOSIS-SENSE- (gensym*)))
