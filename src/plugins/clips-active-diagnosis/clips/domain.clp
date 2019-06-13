@@ -355,24 +355,24 @@
   (domain-retract-grounding)
 )
 
-(defrule domain-ground-action-precondition
-  "Ground a non-atomic precondition. Grounding here merely means that we
-   duplicate the precondition and tie it to one specific action-id."
-  (declare (salience ?*SALIENCE-DOMAIN-GROUND*))
-  (diagnosis-hypothesis (id ?diag-id))
-  (plan-action (action-name ?op) (diag-id ?diag-id) (id ?action-id)
-               (state FORMULATED|PENDING|WAITING))
-  ?precond <- (domain-precondition
-                (name ?precond-name)
-                (part-of ?op)
-                (grounded FALSE))
-  (not (domain-precondition (name ?precond-name) (diag-id ?diag-id) (env ?diag-id)
-                            (grounded-with ?action-id) (grounded TRUE)))
-=>
-  (duplicate ?precond
-    (diag-id ?diag-id) (env ?diag-id) (grounded-with ?action-id)
-    (grounded TRUE))
-)
+;(defrule domain-ground-action-precondition
+;  "Ground a non-atomic precondition. Grounding here merely means that we
+;   duplicate the precondition and tie it to one specific action-id."
+;  (declare (salience ?*SALIENCE-DOMAIN-GROUND*))
+;  (diagnosis-hypothesis (id ?diag-id))
+;  (plan-action (action-name ?op) (diag-id ?diag-id) (id ?action-id)
+;               (state FORMULATED|PENDING|WAITING))
+;  ?precond <- (domain-precondition
+;                (name ?precond-name)
+;                (part-of ?op)
+;                (grounded FALSE))
+;  (not (domain-precondition (name ?precond-name) (diag-id ?diag-id) (env ?diag-id)
+;                            (grounded-with ?action-id) (grounded TRUE)))
+;=>
+;  (duplicate ?precond
+;    (diag-id ?diag-id) (env ?diag-id) (grounded-with ?action-id)
+;    (grounded TRUE))
+;)
 
 (defrule domain-ground-effect-precondition
   "Ground a non-atomic precondition. Grounding here merely means that we

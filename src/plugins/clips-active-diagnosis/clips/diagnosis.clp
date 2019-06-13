@@ -41,8 +41,10 @@
                                         (wm-key-prefix (create$ key domain fact ?predicate))
                                         (eq (wm-key-args ?wm:key) (create$ args? ?predicate-params)))))
         then
+            ;(printout t ?predicate ?predicate-params " is true in " ?dh:id crlf)
             (bind ?pos-result (+ ?pos-result (/ ?dh:probability ?total)))
         else
+            ;(printout t ?predicate ?predicate-params " is false in " ?dh:id crlf)
             (bind ?neg-result (+ ?neg-result (/ ?dh:probability ?total)))
         )    
     )
@@ -111,7 +113,7 @@
     (diagnosis-setup-finished)
     ?dss <- (diagnosis-setup-stage (state DOMAIN-LOADED))
     (diagnosis-hypothesis (id ?diag-id) (state WM-FACTS-INIT))
-    ?pa <- (plan-action (diag-id ?diag-id) (id ?id) (state FORMULATED) (action-name ?an) (executable TRUE))
+    ?pa <- (plan-action (diag-id ?diag-id) (id ?id) (state FORMULATED) (action-name ?an)); (executable TRUE))
     (not (plan-action (diag-id ?diag-id) (id ?id2&:(< ?id2 ?id)) (state FORMULATED)))
     (not (plan-action (diag-id ?diag-id) (state ?state&:(and (neq ?state FINAL) (neq ?state FORMULATED)))))
     =>
