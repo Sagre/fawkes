@@ -138,4 +138,31 @@
   (retract ?p)
 )
 
+(defrule diagnosis-filter-hypotheses-cost
+  ; Remove all hypotheses with cost greater than minimum cost + 1
+  ?dh <- (diagnosis-hypothesis (id ?id) (cost ?cost))
+  (diagnosis-hypothesis (id ?) (cost ?cost2&:(< (+ ?cost2 0) ?cost)))
+  =>
+  (printout t "Remove diag hypothesis " ?id " with cost " ?cost crlf)
+  (do-for-all-facts ((?pa plan-action)) (eq ?pa:plan-id ?id)
+    (retract ?pa)
+  )
+  (retract ?dh)
+)
+
+(defrule diagnosis-filter-hypotheses-duplicate
+  ; Remove all hypotheses with cost greater than minimum cost + 1
+  (diagnosis (id ?diag-id) (mode DIAGNOSIS-CREATED))
+  ?dh <- (diagnosis-hypothesis (id ?id) (diag-id ?diag-id))
+  (diagnosis-hypothesis (id ?id2&:(neq ?id ?id2)) (diag-id ?diag-id))
+  (forall (plan-action (goal-id ?diag-id) (plan-id ?id) (id ?pa-id) (action-name ?an) (param-values $?pv))
+          (plan-action (goal-id ?diag-id) (plan-id ?id2) (id ?pa-id) (action-name ?an) (param-values $?pv))
+  )
+  =>
+  (printout t "Remove diag hypothesis " ?id " because its a duplcate of " ?id2 crlf)
+  (do-for-all-facts ((?pa plan-action)) (eq ?pa:plan-id ?id)
+    (retract ?pa)
+  )
+  (retract ?dh)
+)
 
