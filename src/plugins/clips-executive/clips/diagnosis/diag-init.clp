@@ -18,7 +18,8 @@
   =>
   (retract ?bi)
   (retract ?di)
-  (path-load "diagnosis/diag-pddl.clp")
-  (path-load "diagnosis/diag-wm.clp")
-  (path-load "diagnosis/diag-goal.clp")
+  ;(path-load "diagnosis/diag-pddl.clp")
+  ;(path-load "diagnosis/diag-wm.clp")
+  ;(path-load "diagnosis/diag-goal.clp")
+ ; (path-load "diagnosis/diag-test.clp")
 )

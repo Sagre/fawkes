@@ -26,6 +26,23 @@
   (slot plan-id (type SYMBOL))
 )
 
+(deftemplate diag-plan
+  ; The ID of the goal or diagnose.
+  (slot purpose-id (type SYMBOL))
+  ; The ID of PDDL generation message.
+  (slot gen-id (type INTEGER))
+  ; The ID of the PDDL Plan message.
+  (slot planner-id (type INTEGER))
+  ; The current status of this plan.
+  (slot status (type SYMBOL)
+    (allowed-values
+      GEN-PENDING GEN-RUNNING GENERATED PENDING RUNNING PLANNED PLAN-FETCHED
+    )
+  )
+  ; The PDDL formula to plan for.
+  (slot goal (type STRING))
+)
+
 (deftemplate diagnosis-hypothesis
   (slot id (type SYMBOL))
   (slot diag-id (type SYMBOL))
@@ -42,7 +59,7 @@
   )
   (printout info "Calling PDDL planner")
   (bind ?planner-id (blackboard-send-msg ?m))
-  (assert (pddl-plan
+  (assert (diag-plan
     (purpose-id ?diag-id) (goal ?fault) (status PENDING) (planner-id ?planner-id)
   ))
 )
@@ -64,6 +81,36 @@
                 (fault ?fault))
   )
   (pddl-diagnosis-gen-call ?diag-id ?plan-id ?fault)
+)
+
+
+(defrule diagnosis-check-if-planner-running
+  "Check whether the planner started to plan."
+  ?p <- (diag-plan (status PENDING) (planner-id ?planner-id))
+  (PddlPlannerInterface (id "pddl-planner") (msg_id ?planner-id))
+  =>
+  (modify ?p (status RUNNING))
+)
+
+(defrule diagnosis-check-if-planner-finished
+  "Check whether the planner finished planning."
+  ?p <- (diag-plan (status RUNNING) (planner-id ?planner-id))
+  (PddlPlannerInterface (id "pddl-planner") (msg_id ?planner-id) (final TRUE)
+    (success TRUE))
+  =>
+  (modify ?p (status PLANNED))
+)
+
+(defrule diagnosis-check-if-planner-failed
+  "Check whether the planner finished but has not found a plan."
+  ?g <- (goal (id ?goal-id))
+  ?p <- (diag-plan (status RUNNING) (purpose-id ?goal-id) (planner-id ?planner-id))
+  (PddlPlannerInterface (id "pddl-planner") (msg_id ?planner-id) (final TRUE)
+    (success FALSE))
+  =>
+  (printout error "Planning failed for goal " ?goal-id crlf)
+  (modify ?g (mode FINISHED) (outcome FAILED) )
+  (retract ?p)
 )
 
 (defrule diagnosis-generation-finished
@@ -90,7 +137,7 @@
   "Fetch the resulting plan from robot memory and expand the goal."
   ?g <- (diagnosis (id ?diag-id) (mode GENERATED))
   ?t <- (robmem-trigger (name "new-plan") (ptr ?obj))
-  ?p <- (pddl-plan
+  ?p <- (diag-plan
           (status PLANNED)
           (purpose-id ?diag-id)
         )
@@ -132,7 +179,7 @@
   ?d <- (diagnosis (id ?diag-id) (mode GENERATED))
   (diagnosis-hypothesis (diag-id ?diag-id))
   (not (robmem-trigger (name "new-plan")))
-  ?p <- (pddl-plan (status PLANNED) (purpose-id ?diag-id))
+  ?p <- (diag-plan (status PLANNED) (purpose-id ?diag-id))
   =>
   (modify ?d (mode DIAGNOSIS-CREATED))
   (retract ?p)
