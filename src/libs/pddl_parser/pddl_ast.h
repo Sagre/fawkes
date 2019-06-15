@@ -11,8 +11,10 @@
 #define PDDLQI_PARSER_PDDLAST_H
 
 #include <boost/fusion/include/adapt_struct.hpp>
-#include <boost/spirit/include/qi_alternative.hpp>
-#include <boost/variant/recursive_variant.hpp>
+#include <boost/fusion/include/std_pair.hpp>
+#include <boost/spirit/include/qi.hpp>
+//#include <boost/spirit/include/qi_alternative.hpp>
+//#include <boost/variant/recursive_variant.hpp>
 #include <string>
 #include <vector>
 using boost::variant;

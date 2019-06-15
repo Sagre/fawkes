@@ -35,23 +35,25 @@
     (do-for-all-facts ((?dh diagnosis-hypothesis)) TRUE
         (bind ?total (+ ?total ?dh:probability))
     )
-
+    (printout t "Total: " ?total crlf)
     (do-for-all-facts ((?dh diagnosis-hypothesis)) TRUE
         (if (eq TRUE (any-factp ((?wm wm-fact)) (and (eq ?wm:env ?dh:id) 
                                         (wm-key-prefix (create$ key domain fact ?predicate))
                                         (eq (wm-key-args ?wm:key) (create$ args? ?predicate-params)))))
         then
-            ;(printout t ?predicate ?predicate-params " is true in " ?dh:id crlf)
+            (printout t ?predicate ?predicate-params " is true in " ?dh:id crlf)
             (bind ?pos-result (+ ?pos-result (/ ?dh:probability ?total)))
         else
-            ;(printout t ?predicate ?predicate-params " is false in " ?dh:id crlf)
+            (printout t ?predicate ?predicate-params " is false in " ?dh:id crlf)
             (bind ?neg-result (+ ?neg-result (/ ?dh:probability ?total)))
         )    
     )
     (if (> ?pos-result 0) then
+        (printout t ?pos-result " > 0" crlf)
         (bind ?result (* ?pos-result (/ (log10 ?pos-result) (log10 2.0))))
     )
     (if (> ?neg-result 0) then
+        (printout t ?neg-result " > 0" crlf)
         (bind ?result (+ ?result (* ?neg-result (/ (log10 ?neg-result) (log10 2.0)))))
     )
    
@@ -126,7 +128,7 @@
     (diagnosis-setup-finished)
     ?dss <- (diagnosis-setup-stage (state DOMAIN-LOADED))    
     ?dh <- (diagnosis-hypothesis (id ?diag-id) (state WM-FACTS-INIT))
-    ?pa <- (plan-action (id ?id) (diag-id ?diag-id) (state FORMULATED) (action-name ?an) (executable FALSE))
+    ?pa <- (plan-action (id ?id) (diag-id ?diag-id) (state FORMULATED) (action-name ?an)); (executable FALSE))
     (not (plan-action (diag-id ?diag-id) (id ?id2&:(< ?id2 ?id)) (state FORMULATED)))
     =>
     (printout error "Next plan action " ?an " of " ?diag-id " is not executable" crlf)

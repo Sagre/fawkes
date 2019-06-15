@@ -22,7 +22,7 @@ PRESUBDIRS = interfaces aspect
 
 LIBS_robot_memory = fawkescore fawkesaspects fawkesblackboard fawkesinterface \
 		fawkesutils fawkeslogging fawkesmongodbaspect fvutils \
-		fawkestf RobotMemoryInterface fawkesrobotmemory
+		fawkestf RobotMemoryInterface fawkesrobotmemory HardwareModelsInterface
 OBJS_robot_memory = $(patsubst %.cpp,%.o,$(patsubst qa/%,,$(subst $(SRCDIR)/,,$(realpath $(wildcard $(SRCDIR)/*.cpp)))))
 OBJS_robot_memory += $(patsubst %.cpp,%.o,$(patsubst qa/%,,$(subst $(SRCDIR)/,,$(realpath $(wildcard $(SRCDIR)/computables/*.cpp)))))
 

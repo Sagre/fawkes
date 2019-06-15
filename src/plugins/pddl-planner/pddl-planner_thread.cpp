@@ -136,6 +136,7 @@ PddlPlannerThread::loop()
   // Have to add multiple plans (possible diagnosises) to robot memory
   if ( !plan_list_.empty() ) {
     int id = 0;
+    logger->log_info(name(),"Amount of plans: %d", (int)plan_list_.size());
     for(std::vector<Action> plan : plan_list_){
       std::string matching = std::string(" { plan :" + std::to_string(id) + " } ");
       auto bson_plan = BSONFromActionList(plan,id++);

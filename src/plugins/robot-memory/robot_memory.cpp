@@ -597,9 +597,6 @@ int RobotMemory::restore_collection(const std::string& collection, const std::st
 
   drop_collection(target_coll);
 
-  //lock (mongo_client not thread safe)
-   MutexLocker lock(mutex_);
-
   //resolve path to restore
   if(coll.find(".") == std::string::npos)
   {
@@ -609,14 +606,13 @@ int RobotMemory::restore_collection(const std::string& collection, const std::st
   }
   std::string path = StringConversions::resolve_path(directory) + "/"
                      + coll.replace(coll.find("."),1,"/") + ".bson";
-  log_deb(std::string("Restore collection " + collection + " from " + path), "warn");
+  log(std::string("Restore collection " + collection + " from " + path), "warn");
 
   //call mongorestore from folder with initial restores
   std::vector<std::string> split = str_split(target_coll, '.');
 
   std::string command = "/usr/bin/mongorestore --dir " + path
       + " -d " + split[0] + " -c " + split[1] + " --host=127.0.0.1 --port 27021";
-  log_deb(std::string("Restore command: " + command), "warn");
   FILE *bash_output = popen(command.c_str(), "r");
 
   //check if output is ok
@@ -639,7 +635,7 @@ int RobotMemory::restore_collection(const std::string& collection, const std::st
   if(output_string.find("Failed") != std::string::npos)
   {
     log(std::string("Unable to restore collection" + coll), "error");
-    log_deb(output_string, "error");
+    log(output_string, "error");
     return 0;
   }
   return 1;

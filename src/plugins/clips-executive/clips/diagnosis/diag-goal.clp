@@ -226,8 +226,26 @@
     (modify ?g (mode DISPATCHED))
 )
 
-(defrule test-action
-    ?pa <- (plan-action (action-name test-action) (state PENDING))
+(defrule test-action-move-base
+    ?pa <- (plan-action (plan-id ?plan-id) (goal-id ?goal-id) (action-name move-base-is-locked) (state PENDING))
+    ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?goal-id) (state PENDING))
     =>
     (modify ?pa (state FINAL))
+    (modify ?dsar (state POSITIVE))
+)
+
+(defrule test-action-gripper
+    ?pa <- (plan-action (plan-id ?plan-id) (goal-id ?goal-id) (action-name gripper-calibrated) (state PENDING))
+    ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?goal-id) (state PENDING))
+    =>
+    (modify ?pa (state FINAL))
+    (modify ?dsar (state NEGATIVE))
+)
+
+(defrule test-action-drive-to-wp-check
+    ?pa <- (plan-action (plan-id ?plan-id) (goal-id ?goal-id) (action-name drive-to-check-workpiece) (state PENDING))
+    ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?goal-id) (state PENDING))
+    =>
+    (modify ?pa (state FINAL))
+    (modify ?dsar (state POSITIVE))
 )

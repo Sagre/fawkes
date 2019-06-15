@@ -8,7 +8,7 @@
 ;---------------------------------------------------------------------------
 
 ; Creates diagnosis candidates for a given fault
-; Makes use of the pddl-planner plugin for generating multiple plans with kstar,
+; Makes use of the diag-planner plugin for generating multiple plans with kstar,
 ; which are then asserted to the fact base to be later evaluated by active diagnosis goals
 ;
 ; Enhancements: - Replace plan-actions with some diagnosis specific action template

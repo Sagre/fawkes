@@ -370,7 +370,7 @@ PddlDiagnosisThread::create_domain_file()
       }
 
       for (std::string comp : components) {
-        std::string pddl_comp = comp + " - component\n";
+        std::string pddl_comp = comp + " - object\n";
         input_domain.insert(cur_pos,pddl_comp);
         cur_pos = cur_pos + pddl_comp.length();
       }

@@ -397,7 +397,14 @@ namespace pddl_parser
                 on_error<fail>
                 (
                     pddlDomain,
-                    construct<ParserException>(qi::_4, qi::_1, qi::_2, qi::_3)
+                         std::cout
+           << val("Error! Expecting ")
+           << qi::_4
+           << val(" here: \"")
+           << construct<std::string>(qi::_3, qi::_2)
+           << val("\"")
+           << std::endl
+                    //construct<ParserException>(qi::_4, qi::_1, qi::_2, qi::_3)
                 );
             }
 
