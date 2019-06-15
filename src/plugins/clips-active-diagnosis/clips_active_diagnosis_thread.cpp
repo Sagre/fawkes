@@ -25,7 +25,7 @@
 #include <utils/misc/string_split.h>
 
 using namespace fawkes;
-using namespace mongo;
+using namespace mongocxx;
 
 /** @class ClipsActiveDiagnosisThread 'clips_active_diagnosis_thread.h' 
  * CLIPS Feature to perform active diagnosis. Refer to:
@@ -110,30 +110,22 @@ ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_i
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
     return false;
   }
-
-  BSONObjBuilder query_b;
-
+  using namespace bsoncxx::builder;
   //Query for domain facts and hardware facts. Hardware facts are later used to determine 
   //probabilities of diagnosis candidates
-  query_b << "_id" << BSONRegEx("^/domain/fact|^/hardware");
+  basic::document query_b;
+  query_b.append(basic::kvp("_id",bsoncxx::types::b_regex{"^/domain/fact|^/hardware"}));
 
-  BSONObj q = query_b.done();
   try{
-    std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"diagnosis.worldmodel");
-    if (c) {
-      while(c->more()){
-        BSONObj obj = c->next();
-        if (obj.hasField("_id")) {
-          std::string id = obj.getFieldDotted("_id").String();  
+    auto c = robot_memory->query(query_b,"diagnosis.worldmodel");
+    for (auto doc : c) {
+        if (doc.find("_id") != doc.end()) {
+          std::string id = doc["_id"].get_utf8().value.to_string();  
           diag_env_->add_wm_fact_from_id(true,id);
         }
-      }
-    } else {
-      logger->log_error(name(),"Failed to query for worldmodel facts from %s",collection_.c_str());
-      return false;
     }
-  } catch (mongo::UserException &e) {
-    logger->log_error(name(),"Exception while filling wm-facts: %s", e.toString().c_str());
+  } catch (mongocxx::operation_exception &e) {
+    logger->log_error(name(),"Exception while filling wm-facts: %s", e.what());
     return false;
   }
   return true;

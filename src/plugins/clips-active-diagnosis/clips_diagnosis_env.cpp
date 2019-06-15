@@ -28,7 +28,6 @@
 #include <core/threading/mutex_locker.h>
 
 using namespace fawkes;
-using namespace mongo;
 /** @class ClipsDiagnosisEnvThread "clips_diagnosis_env.h"
  * Thread maintaining the diagnosis environment
  *

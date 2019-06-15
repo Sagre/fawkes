@@ -29,8 +29,8 @@ OBJS_all    = $(OBJS_clips_active_diagnosis)
 PLUGINS_all = $(PLUGINDIR)/clips-active-diagnosis.$(SOEXT)
 
 ifeq ($(HAVE_CLIPS),1)
-  CFLAGS += $(CFLAGS_CLIPS)
-  LDFLAGS += $(LDFLAGS_CLIPS)
+  CFLAGS += $(CFLAGS_CLIPS) $(CFLAGS_CPP11) $(CFLAGS_ROBOT_MEMORY)
+  LDFLAGS += $(LDFLAGS_CLIPS) $(LDFLAGS_ROBOT_MEMORY)
 
   PLUGINS_build = $(PLUGINS_all)
 else

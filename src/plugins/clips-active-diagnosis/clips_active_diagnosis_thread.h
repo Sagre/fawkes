@@ -32,6 +32,9 @@
 #include <plugins/robot-memory/aspect/robot_memory_aspect.h>
 #include "clips_diagnosis_env.h"
 
+#include <bsoncxx/document/view.hpp>
+#include <mongocxx/exception/operation_exception.hpp>
+
 #include <string>
 #include <future>
 #include <clipsmm.h>
