@@ -23,6 +23,7 @@
 
 #include <aspect/logging.h>
 #include <aspect/configurable.h>
+#include <core/threading/thread.h>
 #include <plugins/clips/aspect/clips_feature.h>
 
 #include "precondition_visitor.h"

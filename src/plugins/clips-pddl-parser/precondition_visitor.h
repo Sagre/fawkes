@@ -40,10 +40,4 @@ class PreconditionToCLIPSFactVisitor : public boost::static_visitor<std::vector<
   bool is_main_;
 };
 
-private:
-	std::string parent_;
-	uint        sub_counter_;
-	bool        is_main_;
-};
-
 #endif /* !PLUGINS_CLIPS_PDDL_PARSER_PRECONDITION_VISITOR_H__ */

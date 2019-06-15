@@ -416,7 +416,7 @@ PddlPlannerThread::fd_planner()
 }
 
 document::value
-PddlPlannerThread::BSONFromActionList(const std::vector<action>& action_list, int plan_id)
+PddlPlannerThread::BSONFromActionList(const std::vector<Action>& action_list, int plan_id)
 {
   using namespace bsoncxx::builder;
   basic::document plan;
@@ -463,17 +463,6 @@ PddlPlannerThread::find_nth_space(const std::string &s, size_t nth)
 void
 PddlPlannerThread::print_action_list()
 {
-<<<<<<< HEAD
-	unsigned int count = 0;
-	for (action a : action_list_) {
-		count++;
-		std::string args;
-		for (std::string arg : a.args) {
-			args += arg + " ";
-		}
-		logger->log_info(name(), "Action %d %s with args %s", count, a.name.c_str(), args.c_str());
-	}
-=======
   unsigned int count = 0;
   for ( Action a : action_list_ ) {
     count++;
@@ -483,7 +472,6 @@ PddlPlannerThread::print_action_list()
     }
     logger->log_info(name(),"Action %d %s with args %s", count, a.name.c_str(), args.c_str());
   }
->>>>>>> pddl_planner: clean up and commenting
 }
 
 std::string
