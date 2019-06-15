@@ -31,6 +31,8 @@
 #include <plugins/robot-memory/aspect/robot_memory_aspect.h>
 #include <blackboard/interface_listener.h>
 
+
+#include <bsoncxx/document/view.hpp>
 #include <string>
 
 #include <ctemplate/template.h>
@@ -87,7 +89,7 @@ class PddlDiagnosisThread
   std::string output_path_domain_;
   std::string goal_;
 
-  void fill_dict_from_document(ctemplate::TemplateDictionary *dict, mongo::BSONObj obj, std::string prefix = "");
+  void fill_dict_from_document(ctemplate::TemplateDictionary *dict, const bsoncxx::document::view &obj, std::string prefix = "");
   void generate();
 
   int create_problem_file();
@@ -99,8 +101,8 @@ class PddlDiagnosisThread
   virtual bool bb_interface_message_received(fawkes::Interface *interface,
                                              fawkes::Message *message) throw();
 
-  PlanAction bson_to_plan_action(mongo::BSONObj obj);
-  ComponentTransition bson_to_comp_trans(mongo::BSONObj obj);
+  PlanAction bson_to_plan_action(const bsoncxx::document::view &obj);
+  ComponentTransition bson_to_comp_trans(const bsoncxx::document::view &obj);
 
   bool is_domain_fact(std::string key_str);
   bool is_domain_object(std::string key_str);

@@ -27,7 +27,6 @@
 #include <utils/misc/string_split.h>
 
 using namespace fawkes;
-using namespace mongo;
 
 /** @class PddlDiagnosisThread 'pddl_robot_memory_thread.h' 
  * Generate PDDL files from the robot memory
@@ -180,23 +179,17 @@ PddlDiagnosisThread::create_problem_file()
 
   // For each query found in the template file, query the restored worldmodel and fill
   // the ctemplate dictionary
+  using namespace bsoncxx::builder;
+
   std::map<std::string, std::string>::iterator it = queries.begin();
   for (;it != queries.end(); it++) {
-    BSONObjBuilder query_b;
-    query_b << "_id" << BSONRegEx(it->second);
+    basic::document query_b;
+    query_b.append(basic::kvp("_id",bsoncxx::types::b_regex{it->second}));
 
-    BSONObj q = query_b.done();
-
-    std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"diagnosis.worldmodel");
-    if (c) {
-      while(c->more()) {
-        BSONObj obj = c->next();
-        ctemplate::TemplateDictionary *entry_dict = dict.AddSectionDictionary(it->first);
-	      fill_dict_from_document(entry_dict, obj);
-      }
-    } else {
-      logger->log_error(name(),"Failed to query for regex %s", it->second.c_str());
-      return -1;
+    auto c = robot_memory->query(query_b.view(),"diagnosis.worldmodel");
+    for (auto doc : c) {
+      ctemplate::TemplateDictionary *entry_dict = dict.AddSectionDictionary(it->first);
+	    fill_dict_from_document(entry_dict, doc);
     }
   }
   logger->log_info(name(),"Finished template filling");
@@ -255,44 +248,35 @@ PddlDiagnosisThread::create_domain_file()
   {
     logger->log_error(name(), "Could not open %s", input_path_domain_.c_str());
   }
+	using namespace bsoncxx::builder;
+  basic::document query_b;
+  query_b.append(basic::kvp("_id",bsoncxx::types::b_regex{"^/diagnosis/plan-action"}));
 
-  BSONObjBuilder query_b;
-  query_b << "_id" << BSONRegEx("^/diagnosis/plan-action");
+    auto c = robot_memory->query(query_b.view(),"robmem.diagnosis");
 
-  BSONObj q = query_b.done();
-
-  // Query diagnosis collection for executed plan-actions
-  std::unique_ptr<mongo::DBClientCursor> c = robot_memory->query(q,"robmem.diagnosis");
   std::vector<PlanAction> history;
-  if (c) {
-    while(c->more()){
-      BSONObj obj = c->next();
-      PlanAction pa = bson_to_plan_action(obj);
+  for (auto doc: c) {
+    PlanAction pa = bson_to_plan_action(doc);
       if (pa.plan == plan_) {
         history.push_back(pa);
       }
-    }
-  } else {
-    logger->log_error(name(),"Failed to query for diagnosis/plan-action facts");
-    return -1;
   }
 
   // Query the diagnosis collection for transitions of hardware components
   // These are used to create the exogenous actions representing state changes
   // Collect all existing states and components on the way to add them as objects and types
-  BSONObjBuilder query_hardware_edge;
-  query_hardware_edge << "_id" << BSONRegEx("^/hardware/edge");
-  q = query_hardware_edge.done();
 
   std::map<std::string,std::vector<ComponentTransition>> comp_transitions;
   std::vector<std::string> components;
   std::vector<std::string> states;
 
-  c = robot_memory->query(q,"robmem.diagnosis");
-  if (c) {
-    while(c->more()) {
-      BSONObj obj = c->next();
-      ComponentTransition trans = bson_to_comp_trans(obj);
+  basic::document query_hardware_edge;
+  query_hardware_edge.append(basic::kvp("_id",bsoncxx::types::b_regex{"^/hardware/edge"}));
+
+  c = robot_memory->query(query_hardware_edge.view(),"robmem.diagnosis");
+
+  for (auto doc : c) {
+      ComponentTransition trans = bson_to_comp_trans(doc);
       if (!trans.executable) {
         //Transition is exogenous and has to be added as pddl action
         comp_transitions[trans.name].push_back(trans);
@@ -309,10 +293,6 @@ PddlDiagnosisThread::create_domain_file()
         //New state found
         states.push_back(trans.to);
       }
-    }
-  } else {
-    logger->log_error(name(),"Failed to query for hardware component edges (%s) facts",q.toString().c_str());
-    return -1;
   }
 
   // Sort history according to their ids in a vector in order to correctly create the order actions
@@ -556,10 +536,10 @@ PddlDiagnosisThread::find_and_replace(const std::string &input, const std::strin
  * @return PddlDiagnosisThread::PlanAction 
  */
 PddlDiagnosisThread::PlanAction
-PddlDiagnosisThread::bson_to_plan_action(BSONObj obj)
+PddlDiagnosisThread::bson_to_plan_action(const bsoncxx::document::view &obj)
 {
   PlanAction ret;
-  std::string content = obj["_id"];
+  std::string content = obj["_id"].get_utf8().value.to_string();
   content = content.substr(1,content.length() - 2);
 
   std::vector<std::string> splitted = str_split(content,"?");
@@ -595,10 +575,10 @@ PddlDiagnosisThread::bson_to_plan_action(BSONObj obj)
  * @return PddlDiagnosisThread::ComponentTransition 
  */
 PddlDiagnosisThread::ComponentTransition
-PddlDiagnosisThread::bson_to_comp_trans(BSONObj obj)
+PddlDiagnosisThread::bson_to_comp_trans(const bsoncxx::document::view &obj)
 {
   ComponentTransition ret;
-  std::string content = obj["_id"];
+  std::string content = obj["_id"].get_utf8().value.to_string();
   content = content.substr(1,content.length() - 2);
 
   std::vector<std::string> splitted = str_split(content,"?");
@@ -707,66 +687,62 @@ std::string PddlDiagnosisThread::key_get_object_type(std::string key)
  * @param obj Document
  * @param prefix Prefix of previous super-documents keys
  */
-void PddlDiagnosisThread::fill_dict_from_document(ctemplate::TemplateDictionary *dict, BSONObj obj, std::string prefix)
+void PddlDiagnosisThread::fill_dict_from_document(ctemplate::TemplateDictionary *dict, const bsoncxx::document::view &obj, std::string prefix)
 {
-  for(BSONObjIterator it = obj.begin(); it.more();)
-  {
-    BSONElement elem = it.next();
-    switch (elem.type()) {
-      case mongo::NumberDouble:
-        dict->SetValue(prefix + elem.fieldName(), std::to_string(elem.Double()));
-        break;
-      case mongo::String:
-        dict->SetValue(prefix + elem.fieldName(), elem.String());
-        if (is_domain_fact(elem.String())) {
-           dict->SetValue("name",key_get_predicate_name(elem.String()));
-           dict->SetValue("param_values",key_get_param_values(elem.String()));
+  	for (auto elem : obj) {
+		switch (elem.type()) {
+		case bsoncxx::type::k_double:
+			dict->SetValue(prefix + std::string(elem.key()), std::to_string(elem.get_double()));
+			break;
+		case bsoncxx::type::k_utf8:
+        if (is_domain_fact(elem.get_utf8().value.to_string())) {
+           dict->SetValue("name",key_get_predicate_name(elem.get_utf8().value.to_string()));
+           dict->SetValue("param_values",key_get_param_values(elem.get_utf8().value.to_string()));
         }
-        if (is_domain_object(elem.String())) {
-          dict->SetValue("object_type",key_get_object_type(elem.String()));
+        if (is_domain_object(elem.get_utf8().value.to_string())) {
+          dict->SetValue("object_type",key_get_object_type(elem.get_utf8().value.to_string()));
         }
-        break;
-      case mongo::Bool:
-        dict->SetValue(prefix + elem.fieldName(), std::to_string(elem.Bool()));
-        break;
-      case mongo::NumberInt:
-        dict->SetIntValue(prefix + elem.fieldName(), elem.Int());
-        break;
-      case mongo::NumberLong:
-        dict->SetValue(prefix + elem.fieldName(), std::to_string(elem.Long()));
-        break;
-      case mongo::Object:
-        fill_dict_from_document(dict, elem.Obj(), prefix + elem.fieldName() + "_");
-        break;
-      case 7: //ObjectId
-        dict->SetValue(prefix + elem.fieldName(), elem.OID().toString());
-        break;
-      case mongo::Array:
-      {
-        // access array elements as if they were a subdocument with key-value pairs
-        // using the indices as keys
-        BSONObjBuilder b;
-        for(size_t i = 0; i < elem.Array().size(); i++)
-        {
-          b.append(elem.Array()[i]);
-        }
-        if (b.len() > 0) {
-          fill_dict_from_document(dict, b.obj(), prefix + elem.fieldName() + "_");
-        }
-       
-        // additionally feed the whole array as space-separated list
-        std::string array_string;
-        for (size_t i = 0; i < elem.Array().size(); i++)
-        {
-          // TODO: This only works for string arrays, adapt to other types.
-          array_string += " " + elem.Array()[i].String();
-        }
-        dict->SetValue(prefix + elem.fieldName(), array_string);
-        break;
-      }
-      default:
-        dict->SetValue(prefix + elem.fieldName(), "INVALID_VALUE_TYPE");
-    }
-  }
+			dict->SetValue(prefix + std::string(elem.key()), elem.get_utf8().value.to_string());
+			break;
+		case bsoncxx::type::k_bool:
+			dict->SetValue(prefix + std::string(elem.key()), std::to_string(elem.get_bool()));
+			break;
+		case bsoncxx::type::k_int32:
+			dict->SetIntValue(prefix + std::string(elem.key()), elem.get_int32());
+			break;
+		case bsoncxx::type::k_int64:
+			dict->SetIntValue(prefix + std::string(elem.key()), elem.get_int64());
+			break;
+		case bsoncxx::type::k_document:
+			fill_dict_from_document(dict,
+			                        elem.get_document().view(),
+			                        prefix + std::string(elem.key()) + "_");
+			break;
+		case bsoncxx::type::k_oid: //ObjectId
+			dict->SetValue(prefix + std::string(elem.key()), elem.get_oid().value.to_string());
+			break;
+		case bsoncxx::type::k_array: {
+			// access array elements as if they were a subdocument with key-value pairs
+			// using the indices as keys
+			bsoncxx::builder::basic::document b;
+			bsoncxx::array::view     array = elem.get_array();
+			uint            i     = 0;
+			for (auto e : array) {
+				b.append(bsoncxx::builder::basic::kvp(std::to_string(i++), e.get_document().view()));
+			}
+			fill_dict_from_document(dict, b.view(), prefix + std::string(elem.key()) + "_");
+			// additionally feed the whole array as space-separated list
+			std::string array_string;
+			for (auto e : array) {
+				// TODO: This only works for string arrays, adapt to other types.
+				array_string += " " + e.get_utf8().value.to_string();
+			}
+			dict->SetValue(prefix + std::string(elem.key()), array_string);
+			break;
+		}
+		default: dict->SetValue(prefix + std::string(elem.key()), "INVALID_VALUE_TYPE");
+		}
+	}
+  
 }
 
