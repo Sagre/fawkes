@@ -142,9 +142,9 @@
           (purpose-id ?diag-id)
         )
   =>
-  (bind ?plan-id (bson-get (bson-get ?obj "o") "plan"))
-  (bind ?cost (bson-get (bson-get ?obj "o") "cost"))
-  (progn$ (?action (bson-get-array (bson-get ?obj "o") "actions"))
+  (bind ?plan-id (bson-get (bson-get ?obj "fullDocument") "plan"))
+  (bind ?cost (bson-get (bson-get ?obj "fullDocument") "cost"))
+  (progn$ (?action (bson-get-array (bson-get ?obj "fullDocument") "actions"))
     (bind ?action-name (sym-cat (bson-get ?action "name")))
     ; FF sometimes returns the pseudo-action REACH-GOAL. Filter it out.
     (if (neq ?action-name REACH-GOAL) then
