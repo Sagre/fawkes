@@ -189,6 +189,7 @@
         (printout t "Diagnosis of " ?diag-id " failed" crlf)
         (modify ?d (mode FAILED))
     )
+    (domain-retract-grounding)
     (modify ?g (mode EVALUATED))
 )
 
