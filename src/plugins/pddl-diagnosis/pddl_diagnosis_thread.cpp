@@ -723,10 +723,15 @@ void PddlDiagnosisThread::fill_dict_from_document(ctemplate::TemplateDictionary 
 			// access array elements as if they were a subdocument with key-value pairs
 			// using the indices as keys
 			bsoncxx::builder::basic::document b;
-			bsoncxx::array::view     array = elem.get_array();
+			bsoncxx::array::view     array{elem.get_array().value};
 			uint            i     = 0;
 			for (auto e : array) {
-				b.append(bsoncxx::builder::basic::kvp(std::to_string(i++), e.get_document().view()));
+        if (e.type() == bsoncxx::type::k_document) {
+	        b.append(bsoncxx::builder::basic::kvp(std::to_string(i++), e.get_document()));
+        } else {
+          logger->log_debug(name(),"Element is not a document but %d" , (int)e.type());
+        }
+       
 			}
 			fill_dict_from_document(dict, b.view(), prefix + std::string(elem.key()) + "_");
 			// additionally feed the whole array as space-separated list
