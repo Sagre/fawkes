@@ -540,15 +540,13 @@ PddlDiagnosisThread::bson_to_plan_action(const bsoncxx::document::view &obj)
 {
   PlanAction ret;
   std::string content = obj["_id"].get_utf8().value.to_string();
-  content = content.substr(1,content.length() - 2);
-
+  content = content.substr(1,content.length() - 1);
   std::vector<std::string> splitted = str_split(content,"?");
   std::string id = splitted[0];
   std::string args = splitted[1];
 
   std::vector<std::string> id_splitted = str_split(id,"/");
-  ret.name = id_splitted[3];
-
+  ret.name = id_splitted[id_splitted.size() - 1];
   std::vector<std::string> args_splitted = str_split(args,"&");
 
   for (size_t i = 0; i < args_splitted.size(); ++i) {
