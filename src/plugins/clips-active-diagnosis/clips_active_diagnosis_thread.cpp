@@ -101,10 +101,10 @@ ClipsActiveDiagnosisThread::clips_context_destroyed(const std::string &env_name)
  * @return false On failure
  */
 bool
-ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts(const std::string &plan_id)
+ClipsActiveDiagnosisThread::diag_env_initiate_wm_facts()
 { 
   //TODO: worldmodel dump path parsen
-  std::string world_model_path = StringConversions::resolve_path(std::string(world_model_dump_prefix_ + "/" + plan_id));
+  std::string world_model_path = StringConversions::resolve_path(std::string(world_model_dump_prefix_ + "/" + plan_id_));
   if (robot_memory->restore_collection(collection_,world_model_path,"diagnosis.worldmodel") == 0)
   {
     logger->log_error(name(),"Failed to restore collection from %s",world_model_path.c_str());
@@ -224,12 +224,70 @@ ClipsActiveDiagnosisThread::diag_env_initiate_plan_actions()
       try {
         CLIPS::Value fact_goal_id = ret->slot_value("goal-id")[0];
         if (fact_goal_id.as_string() == diag_id_) {
-          diag_env_->add_plan_action(ret,ret->slot_value("plan-id")[0].as_float());
+          if (ret->slot_value("plan-id")[0].type() == CLIPS::TYPE_INTEGER)
+              diag_env_->add_plan_action(ret,std::to_string(ret->slot_value("plan-id")[0].as_integer()));
         }        
      } catch (Exception &e) {
        logger->log_error(name(), "Exception while iterating facts: %s",e.what());
      }
     }
+    ret = ret->next();
+  }
+  return true;
+}
+
+/**
+ * @brief Query the current clips environment for plan-actions that are part of the failed plan
+ * 
+ * @return true On success
+ * @return false On failure
+ */
+bool
+ClipsActiveDiagnosisThread::diag_env_initiate_executed_plan_actions()
+{
+  LockPtr<CLIPS::Environment> clips = envs_[env_name_];
+
+  MutexLocker lock(clips.objmutex_ptr());
+  CLIPS::Fact::pointer ret = clips->get_facts();
+  while(ret) {
+    CLIPS::Template::pointer tmpl = ret->get_template();
+    if (tmpl->name() == "plan-action") {
+      try {
+        CLIPS::Value fact_plan_id = ret->slot_value("plan-id")[0];
+        CLIPS::Value fact_state = ret->slot_value("state")[0];
+        if (fact_plan_id.type() == CLIPS::TYPE_SYMBOL 
+              && fact_plan_id.as_string() == plan_id_
+              && fact_state.as_string() == "FINAL") {
+          diag_env_->add_plan_action(ret,plan_id_);
+        }        
+     } catch (Exception &e) {
+       logger->log_error(name(), "Exception while iterating facts: %s",e.what());
+     }
+    }
+    ret = ret->next();
+  }
+  return true;
+}
+
+/**
+ * @brief Retrieves all CLIPS::Fact objects from the current environment and stores them
+ * 
+ */
+bool
+ClipsActiveDiagnosisThread::get_fact_base() {
+  fact_base_.clear();
+  fact_index_threshold_ = 0;
+
+  LockPtr<CLIPS::Environment> clips = envs_[env_name_];
+
+  MutexLocker lock(clips.objmutex_ptr());
+  CLIPS::Fact::pointer ret = clips->get_facts();
+  while (ret) {
+    CLIPS::Template::pointer tmpl = ret->get_template();
+    if (tmpl->name() == "wm-fact") {
+      fact_base_.insert(ret->slot_value("id")[0].as_string());
+    }
+    if (ret->index() > fact_index_threshold_) fact_index_threshold_ = ret->index();
     ret = ret->next();
   }
   return true;
@@ -251,6 +309,11 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string env_name, std::s
   env_name_ = env_name;
 
   logger->log_info(name(),"Starting to setup diagnosis environment for %s",diag_id.c_str());
+  if (!get_fact_base()) {
+    logger->log_error(name(),"Failed to retrieve fact base from environment");
+    return CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL);
+  }
+  logger->log_info(name(),"Finished getting fact base");
 
   std::vector<float> hypothesis_ids = get_hypothesis_ids();
   if (hypothesis_ids.empty()) {
@@ -268,14 +331,14 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string env_name, std::s
   }
   logger->log_info(name(),"Finished starting diagnosis environments");
 
-  std::string plan_id = get_plan_id_from_diag_id();
-  if (plan_id == "") {
+  plan_id_ = get_plan_id_from_diag_id();
+  if (plan_id_ == "") {
     logger->log_error(name(),"Failed to get plan-id for diagnosis %s from cx environment",diag_id.c_str());
     return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
   }
   logger->log_info(name(),"Finished getting plan_id");
 
-  if (!diag_env_initiate_wm_facts(plan_id)) {
+  if (!diag_env_initiate_wm_facts()) {
     logger->log_error(name(),"Failed to initiate worldmodel for diagnosis environments");
     return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
   }
@@ -291,6 +354,13 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string env_name, std::s
     return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
   }
   logger->log_info(name(),"Finished initializing plan-actions");
+
+  diag_env_->add_diagnosis_hypothesis(plan_id_);
+  if (!diag_env_initiate_executed_plan_actions()) {
+    logger->log_error(name(),"Failed to initiate executed plan-actions for diagnosis environments");
+    delete_diagnosis();
+    return CLIPS::Value("FALSE", CLIPS::TYPE_SYMBOL);
+  }
 
   diag_env_->setup_finished();
 
@@ -348,29 +418,45 @@ CLIPS::Value
 ClipsActiveDiagnosisThread::update_common_knowledge()
 { 
   auto clips = envs_[env_name_];
-  fact_occurences_.clear();
+  MutexLocker lock(clips.objmutex_ptr());
 
   // World model facts of diagnosis environment with the "sub environment" as second pair member
   std::vector<std::pair<std::string,std::string>> diag_facts = diag_env_->get_fact_strings();
 
   //Number of valid diagnosis candidates
   int max = 0;
+  std::vector<std::string> executed_world_model;
+  std::map<std::string,int> fact_occurences;
 
   for (std::pair<std::string,std::string> diag_fact : diag_facts)
   {
     if (diag_fact.second == "DEFAULT") {
       continue;
     }
-    if (fact_occurences_.find(diag_fact.first) == fact_occurences_.end()) {
-      fact_occurences_[diag_fact.first] = 1;
-    } else {
-      fact_occurences_[diag_fact.first]++;
+    if (diag_fact.second == plan_id_) {
+      logger->log_info(name(),"Aye");
+      executed_world_model.push_back(diag_fact.first);
+      continue;
     }
-    if (fact_occurences_[diag_fact.first] > max) max = fact_occurences_[diag_fact.first];
+    if (fact_occurences.find(diag_fact.first) == fact_occurences.end()) {
+      fact_occurences[diag_fact.first] = 1;
+    } else {
+      fact_occurences[diag_fact.first]++;
+    }
+    if (fact_occurences[diag_fact.first] > max) max = fact_occurences[diag_fact.first];
   }
 
+  // All facts that are true in the executed world model and not true in all hypothesis world models
+  std::vector<std::string> facts_to_remove;
+  for (std::string fact : executed_world_model) {
+    if (fact_occurences[fact] < max) {
+      facts_to_remove.push_back(fact);
+      logger->log_info(name(),"Fact to remove: %s",fact.c_str());
+    }
+  }
 
   // Remove all domain facts from the current environment that are not true in all diagnosis hypotheses
+  // Ignore facts that were asserted after setting up the diagnosis environment
   CLIPS::Fact::pointer cx_fact_ptr = clips->get_facts();
   std::vector<std::string> cx_facts;
   while (cx_fact_ptr)
@@ -380,10 +466,9 @@ ClipsActiveDiagnosisThread::update_common_knowledge()
       std::string cx_fact_string = cx_fact_ptr->slot_value("id")[0].as_string();
       cx_facts.push_back(cx_fact_string);
       if (cx_fact_string.find("/domain/fact") != std::string::npos && 
-              (fact_occurences_.find(cx_fact_string) == fact_occurences_.end() ||
-              fact_occurences_[cx_fact_string] != max))
+              (std::find(facts_to_remove.begin(), facts_to_remove.end(), cx_fact_string) != facts_to_remove.end() ))
       {
-        logger->log_debug(name(),"Retract: %s",cx_fact_string.c_str());
+        logger->log_info(name(),"Retract: %s",cx_fact_string.c_str());
         CLIPS::Fact::pointer tmp(cx_fact_ptr->next());
         cx_fact_ptr->retract();
         cx_fact_ptr = tmp;
@@ -397,13 +482,14 @@ ClipsActiveDiagnosisThread::update_common_knowledge()
   }
 
   //Assert all facts that are true in all diagnosis hypotheses and not already in the current environment
-  std::map<std::string,int>::iterator it_count = fact_occurences_.begin();
-  for (;it_count != fact_occurences_.end(); it_count++)
+  std::map<std::string,int>::iterator it_count = fact_occurences.begin();
+  for (;it_count != fact_occurences.end(); it_count++)
   {
     if (it_count->second == max && 
-            std::find(cx_facts.begin(), cx_facts.end(), it_count->first) == cx_facts.end())
+            std::find(executed_world_model.begin(), executed_world_model.end(), it_count->first) == executed_world_model.end())
     {
-      logger->log_debug(name(),"Assert: %s",it_count->first.c_str());
+      if (std::find(cx_facts.begin(),cx_facts.end(),it_count->first) != cx_facts.end()) continue;
+      logger->log_info(name(),"Assert: %s",it_count->first.c_str());
 
       CLIPS::Template::pointer wm_fact = clips->get_template("wm-fact");
 	    if (wm_fact) {

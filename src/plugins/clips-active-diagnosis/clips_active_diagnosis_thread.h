@@ -66,8 +66,10 @@ class ClipsActiveDiagnosisThread
 
   std::vector<float> get_hypothesis_ids();
   std::string get_plan_id_from_diag_id();
-  bool diag_env_initiate_wm_facts(const std::string &plan_id);
+  bool diag_env_initiate_wm_facts();
   bool diag_env_initiate_plan_actions();
+  bool diag_env_initiate_executed_plan_actions();
+  bool get_fact_base();
 
   CLIPS::Value set_up_active_diagnosis(std::string env_name, std::string diag_id);
   void delete_diagnosis();
@@ -86,10 +88,13 @@ class ClipsActiveDiagnosisThread
 
   std::string env_name_;
   std::string diag_id_;
+  std::string plan_id_;
 
   std::string world_model_dump_prefix_;
   std::string collection_;
-  std::map<std::string,int> fact_occurences_;
+
+  std::set<std::string> fact_base_;
+  long int fact_index_threshold_;
 
  private:
  

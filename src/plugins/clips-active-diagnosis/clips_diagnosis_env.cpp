@@ -144,6 +144,11 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float hypo
 					tmp->set_slot(slot,CLIPS::Value());
 				}
 			} else {
+        if (slot == "state") {
+          logger->log_info(name(),"Overwrite with formulated");
+          tmp->set_slot(slot,CLIPS::Value("FORMULATED",CLIPS::TYPE_SYMBOL));
+          continue;
+        }
 				if (!plan_action->is_multifield_slot(slot)) {
 					tmp->set_slot(slot,pa_fact->slot_value(slot)[0]);
 				} else {
