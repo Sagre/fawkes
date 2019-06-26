@@ -189,7 +189,7 @@ ClipsActiveDiagnosisThread::get_hypothesis_ids()
           if (fact_id.empty()) {
             logger->log_error(name(), "Slot id empty");
           } else {
-            hypothesis_ids.push_back(fact_id[0].as_float());
+            hypothesis_ids.push_back(fact_id[0].as_integer());
           } 
         }        
      } catch (Exception &e) {
@@ -344,9 +344,10 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string env_name, std::s
   }
   logger->log_info(name(),"Finished initializing wm-facts");
 
-  for (float hypo_id : hypothesis_ids) {
-    diag_env_->add_diagnosis_hypothesis(hypo_id);
+  for (int hypo_id : hypothesis_ids) {
+    diag_env_->add_diagnosis_hypothesis(std::to_string(hypo_id));
   }
+
 
   if (!diag_env_initiate_plan_actions()) {
     logger->log_error(name(),"Failed to initiate plan-actions for diagnosis environments");

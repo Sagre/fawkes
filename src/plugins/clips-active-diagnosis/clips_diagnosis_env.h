@@ -61,10 +61,10 @@ class ClipsDiagnosisEnvThread
 	bool clips_init_finished();
 	void setup_finished();
 
-	void add_diagnosis_hypothesis(float hypo_id);
+	void add_diagnosis_hypothesis(std::string hypo_id);
 	void add_wm_fact_from_id(bool pos, std::string id);
 	void add_sensing_result_from_key(bool pos, std::string predicate, std::vector<std::string> key_args);
-	void add_plan_action(CLIPS::Fact::pointer pa_fact,float diag_id);
+	void add_plan_action(CLIPS::Fact::pointer pa_fact,std::string hypo_id);
 
 	bool vector_equal_to_wm_fact(std::vector<std::string> vec, CLIPS::Fact::pointer fact);
 	float information_gain(std::string predicate, std::vector<std::string> key_args);

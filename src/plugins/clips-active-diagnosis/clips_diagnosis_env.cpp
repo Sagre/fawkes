@@ -119,7 +119,7 @@ ClipsDiagnosisEnvThread::init()
  * @param hypo_id Id of the diagnosis candidate the plan-action belongs to
  */
 void
-ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float hypo_id)
+ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,std::string hypo_id)
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
@@ -131,7 +131,7 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,float hypo
 			if (pa_fact->slot_value(slot).empty()) {
 				// Fill the diag-id slot with the hypothesis id
 				if (slot == "diag-id") {
-					tmp->set_slot(slot,CLIPS::Value(std::to_string(hypo_id),CLIPS::TYPE_SYMBOL));
+					tmp->set_slot(slot,CLIPS::Value(hypo_id,CLIPS::TYPE_SYMBOL));
 					continue;
 				}
 				if (plan_action->slot_default_type(slot) == CLIPS::DefaultType::NO_DEFAULT) {
@@ -214,7 +214,7 @@ ClipsDiagnosisEnvThread::setup_finished()
  * @param hypo_id Id of the diagnosis hypothesis
  */
 void
-ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(float hypo_id) 
+ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(std::string hypo_id) 
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
@@ -226,7 +226,7 @@ ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(float hypo_id)
 	CLIPS::Template::pointer diag_hypothesis = clips->get_template("diagnosis-hypothesis");
 	if (diag_hypothesis) {
 		CLIPS::Fact::pointer fact = CLIPS::Fact::create(**clips,diag_hypothesis);
-		fact->set_slot("id",CLIPS::Value(std::to_string(hypo_id),CLIPS::TYPE_SYMBOL));
+		fact->set_slot("id",CLIPS::Value(hypo_id,CLIPS::TYPE_SYMBOL));
 		fact->set_slot("state",CLIPS::Value("INIT",CLIPS::TYPE_SYMBOL));
 		fact->set_slot("probability",CLIPS::Value(-1.0));
 		try{
