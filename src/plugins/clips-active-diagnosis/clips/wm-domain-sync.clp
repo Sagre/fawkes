@@ -405,7 +405,7 @@
 													 (wm-fact-id ?id) (wm-fact-key $?key) (wm-fact-idx ~0))
 	?df <- (domain-fact (name ?name) (env ?env)
 											(param-values $?param-values&:(wm-sync-args-match ?key ?param-names ?param-values)))
-	(not (wm-fact (id ?id)))
+	(not (wm-fact (id ?id) (env ?env)))
 	=>
 	(retract ?df)
 	(modify ?wm (wm-fact-idx 0) (domain-fact-idx 0))
