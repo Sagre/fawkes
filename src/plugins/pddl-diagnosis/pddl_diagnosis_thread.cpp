@@ -362,13 +362,7 @@ PddlDiagnosisThread::create_domain_file()
   
       std::map<std::string,std::vector<ComponentTransition>>::iterator it = comp_transitions.begin();
       while( it != comp_transitions.end()) {
-          std::string exog_template = "(:action <<#name>>\n \
-                                        :parameters ()\n \
-                                        :precondition (and (exog-possible) (or <<#comps-from>>))\n \
-                                        :effect (and <<#comps-when>>\n \
-                                              \t\t(increase (total-cost) 1)\n \
-                                                )\n \
-                                        )\n";
+          std::string exog_template = "(:action <<#name>>\n \t:parameters ()\n \t:precondition (and (exog-possible) (or <<#comps-from>>))\n \t:effect (and <<#comps-when>>\n \t\t(increase (total-cost) 1)\n )\n )\n";
           ComponentTransition trans = it->second[0];
           // Replace the name with the name of the transition actions
           std::string exog_replaced = find_and_replace(exog_template,"<<#name>>",trans.name);
