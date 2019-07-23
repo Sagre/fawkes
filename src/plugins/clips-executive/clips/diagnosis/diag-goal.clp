@@ -115,6 +115,9 @@
         (do-for-all-facts ((?dpa diag-plan-information-gain)) (eq ?dpa:plan-id ?p:id)
             (retract ?dpa)
         )
+        (do-for-all-facts ((?dsar domain-sensing-action-result)) (eq ?dsar:plan-id ?p:id)
+            (retract ?dsar)
+        )
         (retract ?p)
     )
     (domain-retract-grounding)
@@ -131,7 +134,8 @@
     (do-for-all-facts ((?dsar domain-sensing-action-result)) (eq ?dsar:goal-id ?id)
         (retract ?dsar)
     )
-    (active-diagnosis-delete)
+    (printout t "Found no executable active diagnosis plans" crlf)
+    ;(active-diagnosis-delete)
     (modify ?g (mode RETRACTED) (outcome REJECTED))
 )
 
@@ -171,6 +175,7 @@
                         (mode FORMULATED))  
         )
     else
+        (printout t "Diagnosis is " ?outcome " with still valid diagnosis: " ?diag-count crlf)
         (active-diagnosis-delete)
     )
     (retract ?p ?dpi ?dsar)
@@ -217,6 +222,16 @@
     (printout t "Done" crlf)
 )
 
+(defrule diag-warn-unknown-component-state
+  (domain-object (name ?comp) (type component))
+  (not (domain-fact (name comp-state) (param-values ?comp ?state)))
+  ; No Diagnosis running currently
+  (wm-fact (key refbox phase) (value PRODUCTION))
+  (not (diagnosis))
+  =>
+  (printout error "State of component " ?comp " is unknown" crlf)
+)
+
 (defrule diag-goal-expand-sense-goal
     ?g <- (goal (id ?id) (class ACTIVE-DIAGNOSIS-SENSE) (mode SELECTED) (params ?action))
     =>
@@ -227,26 +242,3 @@
     (modify ?g (mode DISPATCHED))
 )
 
-(defrule test-action-move-base
-    ?pa <- (plan-action (plan-id ?plan-id) (goal-id ?goal-id) (action-name move-base-is-locked) (state PENDING))
-    ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?goal-id) (state PENDING))
-    =>
-    (modify ?pa (state FINAL))
-    (modify ?dsar (state POSITIVE))
-)
-
-(defrule test-action-gripper
-    ?pa <- (plan-action (plan-id ?plan-id) (goal-id ?goal-id) (action-name gripper-calibrated) (state PENDING))
-    ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?goal-id) (state PENDING))
-    =>
-    (modify ?pa (state FINAL))
-    (modify ?dsar (state NEGATIVE))
-)
-
-(defrule test-action-drive-to-wp-check
-    ?pa <- (plan-action (plan-id ?plan-id) (goal-id ?goal-id) (action-name drive-to-check-workpiece) (state PENDING))
-    ?dsar <- (domain-sensing-action-result (plan-id ?plan-id) (goal-id ?goal-id) (state PENDING))
-    =>
-    (modify ?pa (state FINAL))
-    (modify ?dsar (state POSITIVE))
-)

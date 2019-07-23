@@ -138,7 +138,7 @@
   ?g <- (diagnosis (id ?diag-id) (mode GENERATED))
   ?t <- (robmem-trigger (name "new-plan") (ptr ?obj))
   ?p <- (diag-plan
-          (status PLANNED)
+       ;   (status PLANNED)
           (purpose-id ?diag-id)
         )
   =>
@@ -187,8 +187,9 @@
 
 (defrule diagnosis-filter-hypotheses-cost
   ; Remove all hypotheses with cost greater than minimum cost + 1
-  ?dh <- (diagnosis-hypothesis (id ?id) (cost ?cost))
-  (diagnosis-hypothesis (id ?) (cost ?cost2&:(< (+ ?cost2 0) ?cost)))
+  (diagnosis (id ?diag-id) (mode DIAGNOSIS_CREATED))
+  ?dh <- (diagnosis-hypothesis (id ?id) (cost ?cost) (diag-id ?diag-id))
+  (diagnosis-hypothesis (id ?) (cost ?cost2&:(< (+ ?cost2 0) ?cost)) (diag-id ?diag-id))
   =>
   (printout t "Remove diag hypothesis " ?id " with cost " ?cost crlf)
   (do-for-all-facts ((?pa plan-action)) (eq ?pa:plan-id ?id)
