@@ -23,8 +23,6 @@
 
 #include "pddl-planner_thread.h"
 
-#include <utils/misc/string_conversions.h>
-
 #include <bsoncxx/builder/basic/document.hpp>
 #include <bsoncxx/json.hpp>
 #include <fstream>
@@ -147,6 +145,7 @@ PddlPlannerThread::loop()
         logger->log_error(name(),"Failed to update plan");
       }
     }
+    plan_list_.clear();
     plan_if_->set_success(true);
   } else {
     // Standard plan
@@ -155,6 +154,7 @@ PddlPlannerThread::loop()
   		robot_memory->update(from_json("{plan:{$exists:true}}").view(), plan, cfg_collection_, true);
   		print_action_list();
   		plan_if_->set_success(true);
+      action_list_.clear();
   	} else {
   		logger->log_error(name(), "Updating plan failed, action list empty!");
   		robot_memory->update(from_json("{\"plan\":{$exists:true}}"),
@@ -279,6 +279,7 @@ PddlPlannerThread::dbmp_planner()
 	}
 }
 
+
 /**
  * @brief Use Kstar planner for generating the top k plans for the given pddl planning problem
  * 
@@ -295,21 +296,11 @@ PddlPlannerThread::kstar_planner()
 	if ( !cfg_fd_options_.empty() ) {
 		command += std::string(" ") + cfg_kstar_options_;
 	}
+    fs::remove_all("found_plans");
 
 	std::string result = run_planner(command);
+//	logger->log_info(name(),result.c_str());
 
-  logger->log_info(name(),"Removing temporary planner output.");
-  fs::remove_all("found_plans");
-
-  size_t cur_pos = 0;
-  if ( result.find("Plan id:", cur_pos) == std::string::npos) {
-    logger->log_error(name(), "Planning Failed: %s", result.c_str());
-    throw Exception("No solution found");
-  } else {
-    cur_pos = result.find("Plan id:", cur_pos);
-  }
-
-  result.erase(0,cur_pos);
   size_t end_pos = result.find("Number of plans found: ");
 
   if (end_pos == std::string::npos) {
@@ -349,6 +340,7 @@ PddlPlannerThread::kstar_planner()
 				line = line.substr(1,line.size() - 2);
 				std::vector<std::string> line_splitted = str_split(line," ");
 				a.name = line_splitted[0];
+				if (a.name.find("order_") != std::string::npos) continue;
 
 				for (size_t i = 1; i < line_splitted.size(); ++i) {
 					a.args.push_back(line_splitted[i]);
