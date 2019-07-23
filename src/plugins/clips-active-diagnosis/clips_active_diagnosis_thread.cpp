@@ -356,7 +356,7 @@ ClipsActiveDiagnosisThread::set_up_active_diagnosis(std::string env_name, std::s
   }
   logger->log_info(name(),"Finished initializing plan-actions");
 
-  diag_env_->add_diagnosis_hypothesis(plan_id_);
+  diag_env_->add_diagnosis_hypothesis(plan_id_,false);
   if (!diag_env_initiate_executed_plan_actions()) {
     logger->log_error(name(),"Failed to initiate executed plan-actions for diagnosis environments");
     delete_diagnosis();
@@ -486,8 +486,8 @@ ClipsActiveDiagnosisThread::update_common_knowledge()
   std::map<std::string,int>::iterator it_count = fact_occurences.begin();
   for (;it_count != fact_occurences.end(); it_count++)
   {
-    if (it_count->second == max && 
-            std::find(executed_world_model.begin(), executed_world_model.end(), it_count->first) == executed_world_model.end())
+    if (it_count->second == max)// && 
+            //std::find(executed_world_model.begin(), executed_world_model.end(), it_count->first) == executed_world_model.end())
     {
       if (std::find(cx_facts.begin(),cx_facts.end(),it_count->first) != cx_facts.end()) continue;
       logger->log_info(name(),"Assert: %s",it_count->first.c_str());

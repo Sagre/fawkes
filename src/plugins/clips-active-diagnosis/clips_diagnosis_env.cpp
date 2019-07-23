@@ -145,7 +145,6 @@ ClipsDiagnosisEnvThread::add_plan_action(CLIPS::Fact::pointer pa_fact,std::strin
 				}
 			} else {
         if (slot == "state") {
-          logger->log_info(name(),"Overwrite with formulated");
           tmp->set_slot(slot,CLIPS::Value("FORMULATED",CLIPS::TYPE_SYMBOL));
           continue;
         }
@@ -206,6 +205,8 @@ ClipsDiagnosisEnvThread::setup_finished()
 	clips->refresh_agenda();
 	clips->run();
 	clips->assert_fact("(diagnosis-setup-finished)");
+  clips->refresh_agenda();
+	clips->run();
 }
 
 /**
@@ -214,7 +215,7 @@ ClipsDiagnosisEnvThread::setup_finished()
  * @param hypo_id Id of the diagnosis hypothesis
  */
 void
-ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(std::string hypo_id) 
+ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(std::string hypo_id,bool diag_candidate) 
 {
 	MutexLocker lock(clips.objmutex_ptr());
 
@@ -222,13 +223,21 @@ ClipsDiagnosisEnvThread::add_diagnosis_hypothesis(std::string hypo_id)
 		logger->log_error(name(),"Clips Pointer invalid");
 		return;
 	}
-
+  logger->log_info(name(),"Diag ID: %s",hypo_id.c_str());
 	CLIPS::Template::pointer diag_hypothesis = clips->get_template("diagnosis-hypothesis");
 	if (diag_hypothesis) {
 		CLIPS::Fact::pointer fact = CLIPS::Fact::create(**clips,diag_hypothesis);
 		fact->set_slot("id",CLIPS::Value(hypo_id,CLIPS::TYPE_SYMBOL));
 		fact->set_slot("state",CLIPS::Value("INIT",CLIPS::TYPE_SYMBOL));
 		fact->set_slot("probability",CLIPS::Value(-1.0));
+    if (diag_candidate) {
+      fact->set_slot("candidate",CLIPS::Value("TRUE",CLIPS::TYPE_SYMBOL));
+    } else
+    {
+      fact->set_slot("candidate",CLIPS::Value("FALSE",CLIPS::TYPE_SYMBOL));
+    }
+    
+    
 		try{
 			auto ret = clips->assert_fact(fact);
 			if (!ret) {
@@ -318,6 +327,7 @@ ClipsDiagnosisEnvThread::information_gain(std::string predicate, std::vector<std
 		logger->log_error(name(),"Unexpected multifield returned by (diagnosis-information-gain %s",arguments.c_str());
 		return 0.0;
 	}
+  logger->log_info(name(),"Predicate %s has information gain %f",predicate.c_str(), ret[0].as_float());
 	return ret[0].as_float();
 }
 
@@ -382,6 +392,7 @@ ClipsDiagnosisEnvThread::get_fact_strings()
 	while (fact_ptr) {
 		CLIPS::Template::pointer tmpl = fact_ptr->get_template();
 		if (tmpl->name() == "wm-fact") {
+     // logger->log_info(name(),"%s : %s",fact_ptr->slot_value("env")[0].as_string().c_str(), fact_ptr->slot_value("id")[0].as_string().c_str());
 			ret.push_back(std::make_pair(fact_ptr->slot_value("id")[0].as_string(),
 																	 fact_ptr->slot_value("env")[0].as_string()));
 		}
@@ -442,8 +453,8 @@ ClipsDiagnosisEnvThread::finalize()
 	MutexLocker lock(clips.objmutex_ptr());
 	logger->log_info(name(),"Killed diagnosis environment: %s", diag_id_.c_str());
 	clips->clear();
-	clips->refresh_agenda();
-	clips->run();
+	//clips->refresh_agenda();
+	//clips->run();
 }
 
 

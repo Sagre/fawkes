@@ -2,6 +2,7 @@
     (slot id (type SYMBOL))
     (slot state (type SYMBOL) (allowed-values INIT WM-FACTS-INIT ACTIONS-PROPAGATED FAILED))
     (slot probability (type FLOAT) (default -1.0))
+    (slot candidate (type SYMBOL))
 )
 
 (deftemplate diagnosis-setup-stage
@@ -32,20 +33,25 @@
     (bind ?neg-result 0.0)
     (bind ?result 0.0)
     (bind ?total 0.0)
-    (do-for-all-facts ((?dh diagnosis-hypothesis)) TRUE
+    (printout debug "Test " ?predicate ": " ?predicate-params crlf)
+    (do-for-all-facts ((?dh diagnosis-hypothesis)) ?dh:candidate
         (bind ?total (+ ?total ?dh:probability))
     )
-
-    (do-for-all-facts ((?dh diagnosis-hypothesis)) TRUE
-        (if (eq TRUE (any-factp ((?wm wm-fact)) (and (eq ?wm:env ?dh:id) 
+    (printout debug "Total: " ?total crlf)
+    (do-for-all-facts ((?dh diagnosis-hypothesis)) (and (> ?dh:probability 0) ?dh:candidate)
+        (if (eq TRUE (any-factp ((?wm wm-fact)) (and (eq ?wm:env ?dh:id)
                                         (wm-key-prefix (create$ key domain fact ?predicate))
                                         (eq (wm-key-args ?wm:key) (create$ args? ?predicate-params)))))
+                                        
         then
+            (printout debug ?predicate " is true in " ?dh:id crlf)
             (bind ?pos-result (+ ?pos-result (/ ?dh:probability ?total)))
         else
+            (printout debug ?predicate " is false in " ?dh:id crlf)
             (bind ?neg-result (+ ?neg-result (/ ?dh:probability ?total)))
         )    
     )
+    (printout debug "pos result: " ?pos-result ", neg result: " ?neg-result crlf)
     (if (> ?pos-result 0) then
         (bind ?result (* ?pos-result (/ (log10 ?pos-result) (log10 2.0))))
     )
@@ -59,7 +65,7 @@
 
 (deffunction diagnosis-hypothesis-count ()
     (bind ?count 0)
-    (do-for-all-facts ((?dh diagnosis-hypothesis)) TRUE
+    (do-for-all-facts ((?dh diagnosis-hypothesis)) ?dh:candidate
         (bind ?count (+ ?count 1))
     )
     (return ?count)
@@ -137,8 +143,8 @@
 
 
 (defrule diagnosis-hypothesis-remove-similare-world-state
-    ?dh1 <- (diagnosis-hypothesis (id ?diag-id1) (state ACTIONS-PROPAGATED))
-    ?dh2 <- (diagnosis-hypothesis (id ?diag-id2&:(neq ?diag-id1 ?diag-id2)) (state ACTIONS-PROPAGATED))
+    ?dh1 <- (diagnosis-hypothesis (id ?diag-id1) (state ACTIONS-PROPAGATED) (candidate TRUE))
+    ?dh2 <- (diagnosis-hypothesis (id ?diag-id2&:(neq ?diag-id1 ?diag-id2)) (state ACTIONS-PROPAGATED) (candidate TRUE)) 
     (not (and (wm-fact (env ?diag-id1) (id ?id))
               (not (wm-fact (env ?diag-id2) (id ?id)))
          )
@@ -152,7 +158,7 @@
     ?dsr <- (diagnosis-sensing-result (predicate ?pred)
                     (args $?pred-args)
                     (value TRUE))
-    (diagnosis-hypothesis (id ?env))
+    (diagnosis-hypothesis (id ?env) (candidate TRUE))
     (or (wm-fact (key domain fact ?pred args? $?pred-args) (env ?env) (value FALSE))
         (not (wm-fact (key domain fact ?pred args? $?pred-args) (env ?env)))
     )
@@ -164,7 +170,7 @@
     ?dsr <- (diagnosis-sensing-result (predicate ?pred)
                     (args $?pred-args)
                     (value FALSE))
-    (diagnosis-hypothesis (id ?env))
+    (diagnosis-hypothesis (id ?env) (candidate TRUE))
     (wm-fact (key domain fact ?pred args? $?pred-args) (env ?env) (value ~FALSE))
     =>
     (diagnosis-exclude-hypothesis ?env)
