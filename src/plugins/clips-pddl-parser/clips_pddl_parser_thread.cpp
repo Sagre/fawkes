@@ -140,6 +140,11 @@ PDDLClipsThread::parse_domain(std::string env_name, std::string domain_file)
                     ")");
   }
 
+  // Add all domain constant objects
+  for (auto &type : domain.constants) {
+    env.assert_fact("(domain-object (name " + type.name + ") (type " + type.type + "))");
+  }
+
   //Add all predicates
   for (auto &predicate : domain.predicates) {
     std::string param_string = "";
