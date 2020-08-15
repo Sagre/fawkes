@@ -40,14 +40,32 @@
 #include <sstream>
 
 namespace pddl_parser {
+
+/**
+ * @brief Exception class used for parsing failures
+ *
+ */
 class ParserException : std::exception
 {
 public:
+	/**
+	 * @brief Construct a new Parser Exception object without any available information
+	 *
+	 */
 	ParserException() : exception()
 	{
 		message = "Unknown ParserException";
 	}
 
+	/**
+	 * @brief Construct a new Parser Exception object with a given Iterator type for denoting the
+	 *        position of an unknown error
+	 *
+	 * @tparam Iterator Iteratortype
+	 * @param start Starting point of the object to be parsed
+	 * @param current Current position of the parsing
+	 * @param end End point of the object to be parsed
+	 */
 	template <typename Iterator>
 	ParserException(Iterator start, Iterator current, Iterator end) : exception()
 	{
@@ -55,6 +73,15 @@ public:
 		message += std::string(current, end);
 	}
 
+	/**
+	 * @brief Construct a new Parser Exception object for an error where something is a expected but not found
+	 *
+	 * @tparam Iterator Iteratortype
+	 * @param expectedRule Expected rule at the current position
+	 * @param start Starting point of the object to be parsed
+	 * @param end End position of the object to be parsed
+	 * @param current Current position of the parsing
+	 */
 	template <typename Iterator>
 	ParserException(const boost::spirit::info &expectedRule,
 	                Iterator                   start,
@@ -71,27 +98,15 @@ public:
 		message = messageStream.str();
 	}
 
-	ParserException(const ParserException &src)
-	{
-		message = src.message;
-	}
-
-	ParserException(const std::string &msg)
-	{
-		message = msg;
-	}
-
-	ParserException &
-	operator=(const ParserException &rhs)
-	{
-		message = rhs.message;
-		return *this;
-	}
-
 	virtual ~ParserException() throw()
 	{
 	}
 
+	/**
+	 * @brief Returns the current exception message
+	 *
+	 * @return const char* Current exception message
+	 */
 	virtual const char *
 	what() const throw()
 	{
@@ -99,6 +114,10 @@ public:
 	}
 
 protected:
+	/**
+	 * @brief String storing information about the exception
+	 *
+	 */
 	std::string message;
 };
 
@@ -147,7 +166,7 @@ struct pddl_skipper : public qi::grammar<Iterator>
 
 /**
  * @brief boost::spirit::qi::symbols struct defining all possible requirements symbols
- * 
+ *
  */
 struct RequirementFlagSymbols_ : qi::symbols<char, pddl_parser::RequirementFlag::EnumType>
 {
@@ -163,7 +182,7 @@ struct RequirementFlagSymbols_ : qi::symbols<char, pddl_parser::RequirementFlag:
 
 /**
  * @brief boost::spirit::qi::symbols struct defining operator symbols
- * 
+ *
  */
 struct OperatorSymbols_ : qi::symbols<char, pddl_parser::OperatorFlag::EnumType>
 {
@@ -180,7 +199,7 @@ void insert_typed_name_entities(TypedList &                     entities,
 
 /**
  * @brief Struct defining the grammar for PDDL Domains.
- * 
+ *
  * @tparam Iterator to the string to be parsed
  * @tparam pddl_skipper<Iterator> Skipper defining what parts of the input to be skipped (e.g. comments, spaces)
  */
@@ -281,43 +300,110 @@ struct Domain : qi::grammar<Iterator, PddlDomain(), Skipper>
 		on_error<fail>(pddlDomain, construct<ParserException>(qi::_4, qi::_1, qi::_2, qi::_3));
 	}
 
-	qi::rule<Iterator, PddlDomain(), Skipper>                                        pddlDomain;
-	qi::rule<Iterator, RequirementFlag::VectorType(), Skipper>                       requireDef;
-	qi::rule<Iterator, TypedList(), Skipper>                                         typesDef;
-	qi::rule<Iterator, TypedList(), Skipper>                                         constantsDef;
-	qi::rule<Iterator, PddlAction(), Skipper>                                        pddlAction;
-	qi::rule<Iterator, ActionList(), Skipper>                                        actionsDef;
-	qi::rule<Iterator, PredicateList(), qi::locals<std::string, TypedList>, Skipper> predicatesDef;
-
+	/**
+	 * @brief Struct containing all needed requirements for the PDDL Domain
+	 */
 	struct RequirementFlagSymbols_ requirementFlagSymbols;
 
-	typedef qi::rule<Iterator, std::string(), Skipper> StringRule;
-
+	/**
+	 * @brief Simple rule, matching a string
+	 */
+	qi::rule<Iterator, std::string(), Skipper> StringRule;
+	/**
+	 * @brief Rule, matching a complete PDDL Domain
+	 */
+	qi::rule<Iterator, PddlDomain(), Skipper> pddlDomain;
+	/**
+	 * @brief Rule, matching the requiremenst list of a PDDL Domain
+	 */
+	qi::rule<Iterator, RequirementFlag::VectorType(), Skipper> requireDef;
+	/**
+	 * @brief Rule, matching the type definition list of a PDDL Domain
+	 */
+	qi::rule<Iterator, TypedList(), Skipper> typesDef;
+	/**
+	 * @brief Rule, matching the constants definition list of a PDDL Domain
+	 */
+	qi::rule<Iterator, TypedList(), Skipper> constantsDef;
+	/**
+	 * @brief Rule, matching a single PDDL Action
+	 */
+	qi::rule<Iterator, PddlAction(), Skipper> pddlAction;
+	/**
+	 * @brief Rule, matching the list of defined actions in a PDDL Domain
+	 */
+	qi::rule<Iterator, ActionList(), Skipper> actionsDef;
+	/**
+	 * @brief Rule, matching a list of predicates
+	 */
+	qi::rule<Iterator, PredicateList(), qi::locals<std::string, TypedList>, Skipper> predicatesDef;
+	/**
+	 * @brief Rule, matching a conditional effect
+	 */
 	qi::rule<Iterator, ConditionalEffect(), Skipper> conditionalEffect;
-
+	/**
+	 * @brief Rule, matching a functional condition
+	 */
 	qi::rule<Iterator, FunctionalCondition(), Skipper> functionalCondition;
-	qi::rule<Iterator, FunctionalEffect(), Skipper>    functionalEffect;
-	qi::rule<Iterator, ActionCost(), Skipper>          actionCost;
-	qi::rule<Iterator, Effect(), Skipper>              effect;
-	qi::rule<Iterator, GoalDescription(), Skipper>     goalDescription;
-	qi::rule<Iterator, Literal(), Skipper>             literal;
-	qi::rule<Iterator, AtomicFormula(), Skipper>       atomicFormula;
-	qi::rule<Iterator, Term(), Skipper>                term;
+	/**
+	 * @brief Rule, matching a functional effect
+	 */
+	qi::rule<Iterator, FunctionalEffect(), Skipper> functionalEffect;
+	/**
+	 * @brief Rule, matching an action cost
+	 */
+	qi::rule<Iterator, ActionCost(), Skipper> actionCost;
+	/**
+	 * @brief Rule, matching a effect
+	 */
+	qi::rule<Iterator, Effect(), Skipper> effect;
+	/**
+	 * @brief Rule, matching a goal description
+	 */
+	qi::rule<Iterator, GoalDescription(), Skipper> goalDescription;
+	/**
+	 * @brief Rule, matching a literal
+	 */
+	qi::rule<Iterator, Literal(), Skipper> literal;
+	/**
+	 * @brief Rule, matching an atomic formula
+	 */
+	qi::rule<Iterator, AtomicFormula(), Skipper> atomicFormula;
+	/**
+	 * @brief Rule, matching a term
+	 */
+	qi::rule<Iterator, Term(), Skipper> term;
+	/**
+	 * @brief Rule, matching a typed list
+	 */
 	qi::rule<Iterator, TypedList(StringRule), Skipper> typedList;
+	/**
+	 * @brief Rule, matching a explicit typed List
+	 */
 	qi::rule<Iterator, TypedList(StringRule), qi::locals<std::vector<std::string>>, Skipper>
-	           typedListExplicitType;
+	  typedListExplicitType;
+	/**
+	 * @brief Rule, matching a type, which is a string
+	 */
 	StringRule type;
+	/**
+	 * @brief Rule, matching a name, which is a string
+	 */
 	StringRule name;
+	/**
+	 * @brief Rule, matching a variable, which is a string
+	 */
 	StringRule variable;
 
-	//qi::symbols<char,int> operatorSymbols;
-
+	/**
+	 * @brief struct containing all possible logical operator symbols
+	 */
 	struct OperatorSymbols_ operatorSymbols;
 };
 
 /**
  * @brief Struct defining the grammar for a PDDL Problem description
- * 
+ *
  * @tparam Iterator Iterator for the input string
  * @tparam pddl_skipper<Iterator> A skipper defining what parts of the inputs to be ignored (e.g. comments, spaces)
  */
@@ -382,24 +468,76 @@ struct Problem : qi::grammar<Iterator, PddlProblem(), Skipper>
 		on_error<fail>(pddlProblem, construct<ParserException>(qi::_4, qi::_1, qi::_2, qi::_3));
 	}
 
-	qi::rule<Iterator, PddlProblem(), Skipper>                                       pddlProblem;
-	qi::rule<Iterator, TypedList(), Skipper>                                         objectsDef;
+	/**
+	 * @brief Simple rule, matching a string
+	 */
+	qi::rule<Iterator, std::string(), Skipper> StringRule;
+	/**
+	 * @brief Rule, matching a PDDL Problem
+	 */
+	qi::rule<Iterator, PddlProblem(), Skipper> pddlProblem;
+	/**
+	 * @brief Rule, matching the list of existing objects in a PDDL Problem
+	 */
+	qi::rule<Iterator, TypedList(), Skipper> objectsDef;
+	/**
+	 * @brief Rule, matching a list of predicates
+	 */
 	qi::rule<Iterator, PredicateList(), qi::locals<std::string, TypedList>, Skipper> predicatesDef;
-	qi::rule<Iterator, FactList(), Skipper>                                          initialFacts;
-	typedef qi::rule<Iterator, std::string(), Skipper>                               StringRule;
+	/**
+	 * @brief Rule, matching a list of facts
+	 */
+	qi::rule<Iterator, FactList(), Skipper> initialFacts;
+	/**
+	 * @brief Simple rule, matching a functional Condition
+	 */
 	qi::rule<Iterator, FunctionalCondition(), Skipper> functionalCondition;
-	qi::rule<Iterator, GoalDescription(), Skipper>     goalDescription;
-	qi::rule<Iterator, GoalDescription(), Skipper>     goalDef;
-	qi::rule<Iterator, Literal(), Skipper>             literal;
-	qi::rule<Iterator, AtomicFormula(), Skipper>       atomicFormula;
-	qi::rule<Iterator, Term(), Skipper>                term;
+	/**
+	 * @brief Simple rule, matching a goal description
+	 */
+	qi::rule<Iterator, GoalDescription(), Skipper> goalDescription;
+	/**
+	 * @brief Simple rule, matching a goal defintion
+	 */
+	qi::rule<Iterator, GoalDescription(), Skipper> goalDef;
+	/**
+	 * @brief Simple rule, matching a literal
+	 */
+	qi::rule<Iterator, Literal(), Skipper> literal;
+	/**
+	 * @brief Simple rule, matching an atomic formula
+	 */
+	qi::rule<Iterator, AtomicFormula(), Skipper> atomicFormula;
+	/**
+	 * @brief Simple rule, matching a term
+	 */
+	qi::rule<Iterator, Term(), Skipper> term;
+	/**
+	 * @brief Simple rule, matching a typed list
+	 */
 	qi::rule<Iterator, TypedList(StringRule), Skipper> typedList;
+	/**
+	 * @brief Rule, matching a list of a certain type
+	 *
+	 */
 	qi::rule<Iterator, TypedList(StringRule), qi::locals<std::vector<std::string>>, Skipper>
-	           typedListExplicitType;
+	  typedListExplicitType;
+	/**
+	 * @brief Rule matching type definitions, which is a string
+	 */
 	StringRule type;
+	/**
+	 * @brief Rule matching name definitions, which is a string
+	 */
 	StringRule name;
+	/**
+	 * @brief Rule matching variable definitions, which is a string
+	 */
 	StringRule variable;
 
+	/**
+	 * @brief Struct that contains all available logical operator symbols
+	 */
 	struct OperatorSymbols_ operatorSymbols;
 };
 } // namespace Grammar

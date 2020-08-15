@@ -29,9 +29,19 @@
 #include <iostream>
 
 namespace pddl_parser {
+
+/**
+ * @brief Class offering the ability to parse a string input into a PDDL Domain or a PDDL Problem
+ */
 class Parser
 {
 public:
+	/**
+	* @brief parses a string that should represent a proper pddl domain
+	*
+	* @param input String containing the pddl domain description
+	* @return PddlDomain Parsed PDDL Domain struct
+	*/
 	PddlDomain
 	parseDomain(const std::string &input)
 	{
@@ -40,6 +50,12 @@ public:
 		             PddlDomain>(input);
 	}
 
+	/**
+	 * @brief Parses a string that should represent a proper pddl problem
+	 *
+	 * @param input String containing the pddl problem description
+	 * @return PddlProblem Parsed PDDL Problem struct
+	 */
 	PddlProblem
 	parseProblem(const std::string &input)
 	{
@@ -48,6 +64,15 @@ public:
 		             PddlProblem>(input);
 	}
 
+	/**
+	 * @brief Function that takes care about parsing an input into a given Grammar
+	 *
+	 * @tparam Grammar Grammar that should be used for parsing
+	 * @tparam Skipper Skipper, defining what parts of the input should not be taken into regard for parsing (comments, newlines etc)
+	 * @tparam Attribute Target Struct
+	 * @param input String containing the text to be parsed
+	 * @return Attribute Filled Attribute with the parsed input string according to the given grammar
+	 */
 	template <typename Grammar, typename Skipper, typename Attribute>
 	Attribute
 	parse(const std::string &input)
@@ -64,7 +89,6 @@ public:
 		bool r = phrase_parse(iter, end, grammar, skipper, data);
 
 		if (!r || iter != end) {
-			//std::cout << "Failed randomly?" << std::endl;
 			throw ParserException(input.begin(), iter, end);
 		}
 
